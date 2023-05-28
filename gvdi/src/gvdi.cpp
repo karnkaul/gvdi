@@ -327,9 +327,16 @@ struct Renderer {
 
 	static constexpr auto fence_timeout_v{std::numeric_limits<std::uint64_t>::max()};
 
+	template <typename T, std::same_as<T>... U>
+	static constexpr bool in(T t, U... u) {
+		return (... || (t == u));
+	}
+
 	static vk::SurfaceFormatKHR get_surface_format(std::span<vk::SurfaceFormatKHR const> available) {
 		for (auto const& format : available) {
-			if (format.format == vk::Format::eR8G8B8Snorm || format.format == vk::Format::eB8G8R8A8Snorm) { return format; }
+			if (in(format.format, vk::Format::eR8G8B8A8Snorm, vk::Format::eR8G8B8A8Unorm, vk::Format::eB8G8R8A8Unorm, vk::Format::eB8G8R8A8Snorm)) {
+				return format;
+			}
 		}
 		assert(!available.empty());
 		return available.front();
