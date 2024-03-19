@@ -3,7 +3,7 @@ Language: Cpp
 BasedOnStyle: LLVM
 AlwaysBreakTemplateDeclarations: Yes
 BreakBeforeBraces: Attach
-ColumnLimit: 160
+ColumnLimit: 120
 SpaceAfterTemplateKeyword: true
 Standard: c++20
 TabWidth: 4

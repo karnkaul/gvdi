@@ -1,0 +1,6 @@
+#pragma once
+#include <string_view>
+
+namespace gvdi {
+constexpr std::string_view build_version_v{"@CMAKE_PROJECT_VERSION@"};
+} // namespace gvdi

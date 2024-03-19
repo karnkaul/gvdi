@@ -10,8 +10,5 @@ CMakeSettings.json
 compile_commands.json
 /CMakeUserPresets.json
 
-wiki
+bave.*log
 imgui.ini
-
-levk.log*
-levk.conf*
