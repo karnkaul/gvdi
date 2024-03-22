@@ -385,7 +385,7 @@ auto Context::acquire_next_image() -> std::optional<vk::ImageView> {
 	auto image_index = std::uint32_t{};
 	auto const result =
 		m_device->acquireNextImageKHR(*m_swapchain.swapchain, max_timeout_v, *m_sync.draw, {}, &image_index);
-	if (result == vk::Result::eErrorOutOfDateKHR) {
+	if (result == vk::Result::eErrorOutOfDateKHR || framebuffer != m_swapchain.create_info.imageExtent) {
 		recreate_swapchain(framebuffer);
 		create_sync();
 		return {};
