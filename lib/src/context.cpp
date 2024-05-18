@@ -1,5 +1,6 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
+#include <gvdi/build_version.hpp>
 #include <gvdi/context.hpp>
 #include <algorithm>
 #include <chrono>
@@ -56,6 +57,18 @@ constexpr auto to_vk_extent(T const width, T const height) {
 }
 
 constexpr auto to_vk_extent(ImVec2 const vec2) { return to_vk_extent(vec2.x, vec2.y); }
+
+[[nodiscard]] auto to_vk_version(std::string_view const ver_str) -> std::uint32_t {
+	struct {
+		int major{};
+		int minor{};
+		int patch{};
+	} version{};
+	auto str = std::istringstream{std::string{ver_str}};
+	char ch{};
+	str >> ch >> version.major >> ch >> version.minor >> ch >> version.patch;
+	return VK_MAKE_VERSION(version.major, version.minor, version.patch);
+}
 
 struct MakeImageView {
 	vk::Image image;
@@ -155,13 +168,11 @@ void Context::create_instance() {
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(vdl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr"));
 
 	auto const api_version = vk::enumerateInstanceVersion();
-	if (api_version < vk_api_v) { throw Error{"Vulkan 1.1 not supported by driver"}; }
+	if (api_version < vk_api_v) { throw Error{"Vulkan 1.1 not supported by loader"}; }
 
 	auto extensions = get_glfw_instance_extensions();
 
-	// TODO: add version
-	// auto const version = to_vk_version(build_version_v);
-	auto const version = VK_MAKE_VERSION(0, 1, 0);
+	auto const version = to_vk_version(build_version_v);
 	auto const vai = vk::ApplicationInfo{"bave", version, "bave", version, vk_api_v};
 	auto ici = vk::InstanceCreateInfo{};
 	ici.pApplicationInfo = &vai;
@@ -218,10 +229,9 @@ void Context::select_gpu() {
 
 void Context::create_device() {
 	static constexpr float priority_v = 1.0f;
-	static constexpr std::array required_extensions_v = {
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	static constexpr std::array required_extensions_v = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 #if defined(__APPLE__)
-		VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
+														 VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
 #endif
 	};
 
@@ -351,22 +361,9 @@ void Context::create_dear_imgui() {
 	init_info.ImageCount = 2;
 	init_info.MSAASamples = static_cast<VkSampleCountFlagBits>(1);
 	init_info.RenderPass = *m_render_pass;
-	// init_info.ColorAttachmentFormat = static_cast<VkFormat>(m_swapchain.create_info.imageFormat);
 
 	ImGui_ImplVulkan_Init(&init_info);
-
-	// auto command = Command::make(*m_device, m_queue_family);
-	// command.buffer.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 	ImGui_ImplVulkan_CreateFontsTexture();
-	// command.buffer.end();
-	// auto vsi = vk::SubmitInfo{};
-	// vsi.commandBufferCount = 1;
-	// vsi.pCommandBuffers = &command.buffer;
-	// auto fence = m_device->createFenceUnique({});
-	// m_queue.submit(vsi, *fence);
-	// if (m_device->waitForFences(*fence, vk::True, max_timeout_v) != vk::Result::eSuccess) {
-	// 	throw Error{"Failed to wait for ImGui font creation fence"};
-	// }
 
 	m_imgui = std::unique_ptr<DearImGui, Deleter>{new DearImGui{.descriptor_pool = std::move(pool)}};
 }
