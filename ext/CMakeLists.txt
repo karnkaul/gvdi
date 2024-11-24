@@ -65,7 +65,7 @@ target_sources(dear_imgui PRIVATE
   src/dear_imgui/imgui_widgets.cpp
 )
 
-target_include_directories(dear_imgui PUBLIC SYSTEM
+target_include_directories(dear_imgui SYSTEM PUBLIC
   src/dear_imgui
 )
 

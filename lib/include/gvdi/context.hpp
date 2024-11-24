@@ -2,7 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <gvdi/build_version.hpp>
-#include <vulkan/vulkan.hpp>
+#include <gvdi/vulkan_wrap.hpp>
 #include <cstdint>
 #include <memory>
 #include <optional>
