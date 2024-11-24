@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.23)
 
 project(gvdi VERSION "0.2.3")
 
@@ -11,31 +11,7 @@ option(GVDI_BUILD_EXAMPLE "Build gvdi example" ${PROJECT_IS_TOP_LEVEL})
 
 add_subdirectory(ext)
 
-configure_file(lib/build_version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/include/gvdi/build_version.hpp" @ONLY)
-
-add_library(${PROJECT_NAME})
-add_library(gvdi::gvdi ALIAS ${PROJECT_NAME})
-
-target_link_libraries(${PROJECT_NAME} PUBLIC
-  gvdi::ext
-)
-
-target_sources(${PROJECT_NAME} PRIVATE
-  lib/include/gvdi/context.hpp
-  "${CMAKE_CURRENT_BINARY_DIR}/include/gvdi/build_version.hpp"
-  lib/src/context.cpp
-)
-
-target_include_directories(${PROJECT_NAME} PUBLIC
-  lib/include
-  "${CMAKE_CURRENT_BINARY_DIR}/include"
-)
-
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-  target_compile_options(${PROJECT_NAME} PRIVATE
-    -Wall -Wextra -Wpedantic -Wconversion -Wunused -Werror=return-type
-  )
-endif()
+add_subdirectory(lib)
 
 if(GVDI_BUILD_EXAMPLE)
   add_subdirectory(example)
