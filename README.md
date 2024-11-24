@@ -5,7 +5,7 @@
 #### Requirements
 
 - C++20 compiler (and standard library)
-- CMake 3.22+
+- CMake 3.23+
 
 #### Integration
 
