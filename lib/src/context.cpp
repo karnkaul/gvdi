@@ -444,6 +444,7 @@ auto Context::recreate_swapchain(vk::Extent2D const framebuffer) -> bool {
 	auto count = std::uint32_t{};
 	if (m_device->getSwapchainImagesKHR(*new_swapchain, &count, nullptr) != vk::Result::eSuccess) { return false; }
 
+	m_device->waitIdle();
 	m_swapchain.swapchain = std::move(new_swapchain);
 	m_swapchain.create_info = info;
 	m_swapchain.images = m_device->getSwapchainImagesKHR(*m_swapchain.swapchain);
