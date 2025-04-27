@@ -7,15 +7,24 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   gvdi::ext
 )
 
-target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS include FILES
-  include/gvdi/context.hpp
-  include/gvdi/vulkan_wrap.hpp
+target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS 
+  BASE_DIRS include
+  FILES include/gvdi/context.hpp
 )
 
-target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include" FILES
-  "${CMAKE_CURRENT_BINARY_DIR}/include/gvdi/build_version.hpp"
+target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS 
+  BASE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include" 
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/include/gvdi/build_version.hpp"
 )
 
 target_sources(${PROJECT_NAME} PRIVATE
   src/context.cpp
 )
+
+if(PROJECT_IS_TOP_LEVEL)
+  if(${CMAKE_CXX_COMPILER_ID} STREQUAL Clang OR ${CMAKE_CXX_COMPILER_ID} STREQUAL GNU)
+    target_compile_options(${PROJECT_NAME} PRIVATE
+      -Wall -Wextra -Wpedantic -Wunused -Werror=return-type
+    )
+  endif()
+endif()

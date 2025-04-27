@@ -164,8 +164,7 @@ auto Context::get_framebuffer_size() const -> ImVec2 {
 }
 
 void Context::create_instance() {
-	auto vdl = vk::DynamicLoader{};
-	VULKAN_HPP_DEFAULT_DISPATCHER.init(vdl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr"));
+	VULKAN_HPP_DEFAULT_DISPATCHER.init();
 
 	auto const api_version = vk::enumerateInstanceVersion();
 	if (api_version < vk_api_v) { throw Error{"Vulkan 1.1 not supported by loader"}; }
@@ -189,7 +188,7 @@ void Context::create_instance() {
 		ici.enabledLayerCount = 0;
 		m_instance = vk::createInstanceUnique(ici);
 	}
-	if (!m_instance) { throw Error{"Failed to createe Vulkan Instance"}; }
+	if (!m_instance) { throw Error{"Failed to create Vulkan Instance"}; }
 
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance.get());
 }
@@ -341,13 +340,11 @@ void Context::create_dear_imgui() {
 
 	ImGui::StyleColorsDark();
 
-	auto loader = vk::DynamicLoader{};
-	auto get_fn = [&loader](char const* name) { return loader.getProcAddress<PFN_vkVoidFunction>(name); };
-	auto lambda = +[](char const* name, void* ud) {
-		auto const* gf = reinterpret_cast<decltype(get_fn)*>(ud); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-		return (*gf)(name);
+	static auto const load_vk_func = +[](char const* name, void* user_data) {
+		return VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr(*static_cast<vk::Instance*>(user_data), name);
 	};
-	ImGui_ImplVulkan_LoadFunctions(lambda, &get_fn);
+	ImGui_ImplVulkan_LoadFunctions(vk_api_v, load_vk_func, &*m_instance);
+
 	ImGui_ImplGlfw_InitForVulkan(m_window.get(), true);
 	ImGui_ImplVulkan_InitInfo init_info = {};
 	init_info.Instance = *m_instance;

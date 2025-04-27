@@ -2,7 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <gvdi/build_version.hpp>
-#include <gvdi/vulkan_wrap.hpp>
+#include <vulkan/vulkan.hpp>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -87,7 +87,7 @@ class Context {
 	};
 
 	struct DearImGui {
-		enum class State : int { eBegin, eEnd };
+		enum class State : std::int8_t { eBegin, eEnd };
 
 		vk::UniqueDescriptorPool descriptor_pool{};
 		State state{};
