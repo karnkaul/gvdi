@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(gvdi VERSION "0.2.2")
+project(gvdi VERSION "0.2.3")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,10 +31,12 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   "${CMAKE_CURRENT_BINARY_DIR}/include"
 )
 
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-  target_compile_options(${PROJECT_NAME} PRIVATE
-    -Wall -Wextra -Wpedantic -Wconversion -Wunused -Werror=return-type
-  )
+if(PROJECT_IS_TOP_LEVEL)
+  if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+    target_compile_options(${PROJECT_NAME} PRIVATE
+      -Wall -Wextra -Wpedantic -Wunused -Werror=return-type
+    )
+  endif()
 endif()
 
 if(GVDI_BUILD_EXAMPLE)

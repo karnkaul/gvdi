@@ -12,5 +12,6 @@ Checks: 'clang-analyzer-*,
 	readability-*,
 	-readability-identifier-length,
 	-readability-magic-numbers,
-	-readability-uppercase-literal-suffix'
+	-readability-uppercase-literal-suffix,
+	-readability-redundant-member-init'
 ...
