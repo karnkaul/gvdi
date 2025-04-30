@@ -156,6 +156,12 @@ void Context::render(ImVec4 const& clear) {
 // NOLINTNEXTLINE(readability-make-member-function-const)
 void Context::close() { glfwSetWindowShouldClose(get_window(), GLFW_TRUE); }
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+void Context::rebuild_imgui_fonts() {
+	if (auto* atlas = ImGui::GetIO().Fonts; !atlas->TexReady) { atlas->Build(); }
+	ImGui_ImplVulkan_CreateFontsTexture();
+}
+
 auto Context::get_framebuffer_size() const -> ImVec2 {
 	auto width = int{};
 	auto height = int{};

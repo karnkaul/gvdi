@@ -54,6 +54,10 @@ class Context {
 	/// \brief Close the context and its window.
 	void close();
 
+	/// \brief Recreates ImGui's fonts texture (image and descriptor set).
+	/// Call this after adding custom fonts to ImGuiIO::Fonts.
+	void rebuild_imgui_fonts();
+
 	[[nodiscard]] auto get_window() const -> GLFWwindow* { return m_window.get(); }
 	[[nodiscard]] auto get_framebuffer_size() const -> ImVec2;
 
