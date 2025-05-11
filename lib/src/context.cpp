@@ -355,9 +355,6 @@ struct Context::Impl {
 		if (!recreate_swapchain(to_vk_extent(get_framebuffer_size()))) {
 			throw Error{"Failed to create Vulkan Swapchain"};
 		}
-
-		m_present_sems.resize(m_swapchain.images.size());
-		for (auto& semaphore : m_present_sems) { semaphore = m_device->createSemaphoreUnique({}); }
 	}
 
 	void create_frame() {
@@ -539,7 +536,12 @@ struct Context::Impl {
 		}
 
 		m_frame.draw = m_device->createSemaphoreUnique({}); // reset signaled semaphore.
+		// recreate present semaphores since image count might have changed.
+		m_present_sems.clear();
+		m_present_sems.resize(m_swapchain.images.size());
+		for (auto& semaphore : m_present_sems) { semaphore = m_device->createSemaphoreUnique({}); }
 		m_swapchain.image_index.reset();
+
 		return true;
 	}
 
