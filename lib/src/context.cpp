@@ -118,7 +118,7 @@ Context::Context(UniqueWindow window) : m_window(std::move(window)) {
 	select_gpu();
 	create_device();
 	create_swapchain();
-	create_sync();
+	create_frame();
 	create_render_pass();
 	create_dear_imgui();
 }
@@ -144,11 +144,11 @@ void Context::render(ImVec4 const& clear) {
 	};
 	auto const rpbi = vk::RenderPassBeginInfo{*m_render_pass, *m_framebuffer, render_area, 2, clear_values.data()};
 
-	m_sync.command.buffer.begin(vk::CommandBufferBeginInfo{vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-	m_sync.command.buffer.beginRenderPass(rpbi, vk::SubpassContents::eInline);
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), m_sync.command.buffer);
-	m_sync.command.buffer.endRenderPass();
-	m_sync.command.buffer.end();
+	m_frame.command.buffer.begin(vk::CommandBufferBeginInfo{vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+	m_frame.command.buffer.beginRenderPass(rpbi, vk::SubpassContents::eInline);
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), m_frame.command.buffer);
+	m_frame.command.buffer.endRenderPass();
+	m_frame.command.buffer.end();
 
 	submit_and_present();
 }
@@ -281,13 +281,15 @@ void Context::create_swapchain() {
 	m_swapchain.create_info.imageFormat = format.format;
 
 	if (!recreate_swapchain(to_vk_extent(get_framebuffer_size()))) { throw Error{"Failed to create Vulkan Swapchain"}; }
+
+	m_present_sems.resize(m_swapchain.images.size());
+	for (auto& semaphore : m_present_sems) { semaphore = m_device->createSemaphoreUnique({}); }
 }
 
-void Context::create_sync() {
-	m_sync.draw = m_device->createSemaphoreUnique({});
-	m_sync.present = m_device->createSemaphoreUnique({});
-	m_sync.drawn = m_device->createFenceUnique({vk::FenceCreateFlagBits::eSignaled});
-	m_sync.command = Command::make(*m_device, m_queue_family);
+void Context::create_frame() {
+	m_frame.draw = m_device->createSemaphoreUnique({});
+	m_frame.drawn = m_device->createFenceUnique({vk::FenceCreateFlagBits::eSignaled});
+	m_frame.command = Command::make(*m_device, m_queue_family);
 	m_swapchain.image_index.reset();
 }
 
@@ -377,17 +379,15 @@ auto Context::acquire_next_image() -> std::optional<vk::ImageView> {
 
 	static constexpr auto wait_timeout_v = std::chrono::nanoseconds{std::chrono::seconds{3}};
 
-	if (m_device->waitForFences(*m_sync.drawn, vk::True, wait_timeout_v.count()) != vk::Result::eSuccess) {
+	if (m_device->waitForFences(*m_frame.drawn, vk::True, wait_timeout_v.count()) != vk::Result::eSuccess) {
 		throw Error{"Failed to wait for render fence"};
 	}
-	m_device->resetFences(*m_sync.drawn);
 
 	auto image_index = std::uint32_t{};
 	auto const result =
-		m_device->acquireNextImageKHR(*m_swapchain.swapchain, max_timeout_v, *m_sync.draw, {}, &image_index);
+		m_device->acquireNextImageKHR(*m_swapchain.swapchain, max_timeout_v, *m_frame.draw, {}, &image_index);
 	if (result == vk::Result::eErrorOutOfDateKHR || framebuffer != m_swapchain.create_info.imageExtent) {
 		recreate_swapchain(framebuffer);
-		create_sync();
 		return {};
 	}
 
@@ -395,6 +395,7 @@ auto Context::acquire_next_image() -> std::optional<vk::ImageView> {
 		throw Error{"failed to acquire next image"};
 	}
 
+	m_device->resetFences(*m_frame.drawn);
 	m_swapchain.image_index = image_index;
 	return *m_swapchain.image_views.at(image_index);
 }
@@ -406,19 +407,19 @@ void Context::submit_and_present() {
 
 	auto si = vk::SubmitInfo{};
 	static constexpr vk::PipelineStageFlags wdsm = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-	si.pCommandBuffers = &m_sync.command.buffer;
+	si.pCommandBuffers = &m_frame.command.buffer;
 	si.commandBufferCount = 1;
-	si.pWaitSemaphores = &*m_sync.draw;
+	si.pWaitSemaphores = &*m_frame.draw;
 	si.waitSemaphoreCount = 1;
 	si.pWaitDstStageMask = &wdsm;
-	si.pSignalSemaphores = &*m_sync.present;
+	si.pSignalSemaphores = &*m_present_sems.at(*m_swapchain.image_index);
 	si.signalSemaphoreCount = 1;
-	auto result = m_queue.submit(1, &si, *m_sync.drawn);
+	auto result = m_queue.submit(1, &si, *m_frame.drawn);
 
 	auto pi = vk::PresentInfoKHR{};
 	pi.pImageIndices = &*m_swapchain.image_index;
 	pi.pSwapchains = &*m_swapchain.swapchain;
-	pi.pWaitSemaphores = &*m_sync.present;
+	pi.pWaitSemaphores = si.pSignalSemaphores;
 	pi.waitSemaphoreCount = 1;
 	pi.pSwapchains = &*m_swapchain.swapchain;
 	pi.swapchainCount = 1;
@@ -445,12 +446,14 @@ auto Context::recreate_swapchain(vk::Extent2D const framebuffer) -> bool {
 	info.imageExtent = image_extent(caps, framebuffer);
 	info.minImageCount = image_count(caps);
 	info.oldSwapchain = m_swapchain.swapchain.get();
+
+	m_device->waitIdle();
 	auto new_swapchain = m_device->createSwapchainKHRUnique(info);
+	if (!new_swapchain) { return false; }
 
 	auto count = std::uint32_t{};
 	if (m_device->getSwapchainImagesKHR(*new_swapchain, &count, nullptr) != vk::Result::eSuccess) { return false; }
 
-	m_device->waitIdle();
 	m_swapchain.swapchain = std::move(new_swapchain);
 	m_swapchain.create_info = info;
 	m_swapchain.images = m_device->getSwapchainImagesKHR(*m_swapchain.swapchain);
@@ -461,6 +464,7 @@ auto Context::recreate_swapchain(vk::Extent2D const framebuffer) -> bool {
 			MakeImageView{.image = image, .format = m_swapchain.create_info.imageFormat}(*m_device));
 	}
 
+	m_frame.draw = m_device->createSemaphoreUnique({}); // reset signaled semaphore.
 	m_swapchain.image_index.reset();
 	return true;
 }

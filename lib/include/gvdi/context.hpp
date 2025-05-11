@@ -70,7 +70,7 @@ class Context {
 	void create_device();
 
 	void create_swapchain();
-	void create_sync();
+	void create_frame();
 	void create_render_pass();
 	void create_dear_imgui();
 
@@ -121,10 +121,9 @@ class Context {
 		std::optional<std::uint32_t> image_index{};
 	};
 
-	struct Sync {
+	struct Frame {
 		Command command{};
 		vk::UniqueSemaphore draw{};
-		vk::UniqueSemaphore present{};
 		vk::UniqueFence drawn{};
 	};
 
@@ -137,7 +136,8 @@ class Context {
 	vk::Queue m_queue{};
 
 	Swapchain m_swapchain{};
-	Sync m_sync{};
+	std::vector<vk::UniqueSemaphore> m_present_sems{};
+	Frame m_frame{};
 	vk::UniqueRenderPass m_render_pass{};
 	vk::UniqueFramebuffer m_framebuffer{};
 	std::unique_ptr<DearImGui, Deleter> m_imgui{};
