@@ -169,7 +169,6 @@ struct Context::Impl {
 	struct DearImGui {
 		enum class State : std::int8_t { eBegin, eEnd };
 
-		vk::UniqueDescriptorPool descriptor_pool{};
 		State state{};
 
 		void begin_frame() {
@@ -200,7 +199,6 @@ struct Context::Impl {
 		}
 
 		void operator()(DearImGui* dear_imgui) const noexcept {
-			ImGui_ImplVulkan_DestroyFontsTexture();
 			ImGui_ImplVulkan_Shutdown();
 			ImGui_ImplGlfw_Shutdown();
 			ImGui::DestroyContext();
@@ -400,17 +398,6 @@ struct Context::Impl {
 	}
 
 	void create_dear_imgui() {
-		static constexpr std::uint32_t max_textures_v{16};
-		auto const pool_sizes = std::array{
-			vk::DescriptorPoolSize{vk::DescriptorType::eCombinedImageSampler, max_textures_v},
-		};
-		auto dpci = vk::DescriptorPoolCreateInfo{};
-		dpci.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
-		dpci.maxSets = max_textures_v;
-		dpci.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
-		dpci.pPoolSizes = pool_sizes.data();
-		auto pool = m_device->createDescriptorPoolUnique(dpci);
-
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
 		ImGuiIO& io = ImGui::GetIO();
@@ -431,7 +418,7 @@ struct Context::Impl {
 		init_info.Device = *m_device;
 		init_info.QueueFamily = m_gpu.queue_family;
 		init_info.Queue = m_queue;
-		init_info.DescriptorPool = *pool;
+		init_info.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
 		init_info.Subpass = 0;
 		init_info.MinImageCount = 2;
 		init_info.ImageCount = 2;
@@ -439,9 +426,8 @@ struct Context::Impl {
 		init_info.RenderPass = *m_render_pass;
 
 		ImGui_ImplVulkan_Init(&init_info);
-		ImGui_ImplVulkan_CreateFontsTexture();
 
-		m_imgui = std::unique_ptr<DearImGui, Deleter>{new DearImGui{.descriptor_pool = std::move(pool)}};
+		m_imgui = std::unique_ptr<DearImGui, Deleter>{new DearImGui{}};
 	}
 
 	auto acquire_next_image() -> std::optional<vk::ImageView> {
@@ -611,8 +597,7 @@ void Context::close() {
 
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 void Context::rebuild_imgui_fonts() {
-	if (auto* atlas = ImGui::GetIO().Fonts; !atlas->TexReady) { atlas->Build(); }
-	ImGui_ImplVulkan_CreateFontsTexture();
+	if (auto* atlas = ImGui::GetIO().Fonts; !atlas->TexIsBuilt) { atlas->Build(); }
 }
 
 auto Context::get_window() const -> GLFWwindow* {

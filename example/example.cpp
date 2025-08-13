@@ -1,19 +1,15 @@
-#include <gvdi/context.hpp>
+#include <gvdi/app.hpp>
 #include <chrono>
-#include <iostream>
-#include <optional>
+#include <print>
 
 namespace {
 using namespace std::chrono_literals;
 
-class App {
-  public:
-	// App requires a GLFWwindow instance to install callbacks.
-	// callbacks must be installed before gvdi::Context is constructed,
-	// as then Dear ImGui will replace the installed callbacks.
-	explicit App(GLFWwindow& window) {
-		// setup the data pointer.
-		glfwSetWindowUserPointer(&window, this);
+class App : public gvdi::App {
+	auto create_window() -> GLFWwindow* final {
+		auto* ret = glfwCreateWindow(1280, 720, "example", nullptr, nullptr);
+
+		glfwSetWindowUserPointer(ret, this);
 
 		// convenience function to cast the data pointer back to App.
 		static auto const self = [](GLFWwindow* window) -> App& {
@@ -21,29 +17,14 @@ class App {
 		};
 
 		// install a key callback.
-		glfwSetKeyCallback(&window, [](GLFWwindow* window, int key, int /*scancode*/, int action, int mods) {
+		glfwSetKeyCallback(ret, [](GLFWwindow* window, int key, int /*scancode*/, int action, int mods) {
 			self(window).on_key(key, action, mods);
 		});
 
-		// install more callbacks if desired.
+		return ret;
 	}
 
-	// take ownership of gvdi::Context and start a main loop.
-	void run(gvdi::Context context) {
-		// take ownership of the context.
-		m_context = std::move(context);
-
-		// keep running until the context doesn't start the next frame.
-		// ie, until glfwWindowShouldClose() returns true.
-		while (m_context->next_frame()) {
-			// update the app.
-			update();
-			// render the context.
-			m_context->render();
-		}
-	}
-
-	void update() {
+	void update() final {
 		// update fps.
 		auto const now = std::chrono::steady_clock::now();
 		auto const dt = now - m_start;
@@ -57,28 +38,31 @@ class App {
 			m_elapsed = {};
 		}
 
+		// TEMP
+		static auto s_elapsed = std::chrono::duration<float>{};
+		s_elapsed += dt;
+		if (s_elapsed > 5s) { glfwSetWindowShouldClose(get_window(), GLFW_TRUE); }
+		// TEMP
+
 		// show Dear ImGui demo window.
 		ImGui::ShowDemoWindow();
 
-		if (m_show_fps) {
-			ImGui::SetNextWindowSize({100.0f, 50.0f});
-			if (ImGui::Begin("FPS", &m_show_fps)) { ImGui::Text("FPS: %d", m_fps); }
-			ImGui::End();
-		}
+		// if (m_show_fps) {
+		// 	ImGui::SetNextWindowSize({100.0f, 50.0f});
+		// 	if (ImGui::Begin("FPS", &m_show_fps)) { ImGui::Text("FPS: %d", m_fps); }
+		// 	ImGui::End();
+		// }
 	}
 
-  private:
 	void on_key(int const key, int const action, int const mods) {
 		// close on Ctrl + W
 		if (key == GLFW_KEY_W && action == GLFW_PRESS && (mods & GLFW_MOD_CONTROL) == GLFW_MOD_CONTROL) {
-			m_context->close();
+			glfwSetWindowShouldClose(get_window(), GLFW_TRUE);
 		}
 
 		// show fps on F
 		if (key == GLFW_KEY_F && action == GLFW_RELEASE && mods == 0) { m_show_fps = true; }
 	}
-
-	std::optional<gvdi::Context> m_context{};
 
 	bool m_show_fps{true};
 	int m_frame_count{};
@@ -91,15 +75,12 @@ class App {
 auto main() -> int {
 	try {
 		// print the build version.
-		std::cout << "gvdi version: " << gvdi::build_version_v << "\n";
-		// make a gvdi::UniqueWindow.
-		auto window = gvdi::Context::create_window({1280.0f, 720.0f}, "Example Window");
-		// construct an app and have it install its GLFW callbacks.
-		auto app = App{*window};
-		// create a gvdi::Context by passing ownership of the window, and run the app.
-		app.run(gvdi::Context{std::move(window)});
+		std::println("gvdi version: {}", gvdi::build_version_v);
+
+		auto app = App{};
+		app.run();
 	} catch (std::exception const& e) {
-		std::cerr << "PANIC: " << e.what() << "\n";
+		std::println(stderr, "PANIC: {}", e.what());
 		return EXIT_FAILURE;
 	}
 }

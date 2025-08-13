@@ -7,18 +7,21 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   gvdi::ext
 )
 
-target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS 
+target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
   BASE_DIRS include
   FILES include/gvdi/context.hpp
 )
 
-target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS 
-  BASE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include" 
+target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
+  BASE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include"
   FILES "${CMAKE_CURRENT_BINARY_DIR}/include/gvdi/build_version.hpp"
 )
 
 target_sources(${PROJECT_NAME} PRIVATE
+  include/gvdi/app.hpp
+  include/gvdi/error.hpp
   src/context.cpp
+  src/app.cpp
 )
 
 if(PROJECT_IS_TOP_LEVEL)
