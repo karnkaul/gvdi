@@ -32,6 +32,7 @@ target_sources(dear_imgui PRIVATE
 
 target_include_directories(dear_imgui SYSTEM PUBLIC
   src/dear_imgui
+  src/vulkan_headers/include
 )
 
 target_compile_definitions(dear_imgui PUBLIC
@@ -44,7 +45,6 @@ endif()
 
 target_link_libraries(dear_imgui PUBLIC
   glfw
-  Vulkan::Headers
 )
 
 target_link_libraries(${PROJECT_NAME} INTERFACE

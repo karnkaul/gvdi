@@ -21,11 +21,3 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
 target_sources(${PROJECT_NAME} PRIVATE
   src/app.cpp
 )
-
-if(PROJECT_IS_TOP_LEVEL)
-  if(${CMAKE_CXX_COMPILER_ID} STREQUAL Clang OR ${CMAKE_CXX_COMPILER_ID} STREQUAL GNU)
-    target_compile_options(${PROJECT_NAME} PRIVATE
-      -Wall -Wextra -Wpedantic -Wunused -Werror=return-type
-    )
-  endif()
-endif()
