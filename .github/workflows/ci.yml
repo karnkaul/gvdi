@@ -1,6 +1,5 @@
 name: ci-pr
-on:
-  [pull_request, workflow_dispatch]
+on: [pull_request, workflow_dispatch]
 jobs:
   format-check:
     runs-on: ubuntu-latest
@@ -21,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: init
-        run: uname -m; sudo apt update -yqq && sudo apt install -yqq ninja-build mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
+        run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
       - name: configure
         run: cmake -S . --preset=ninja-gcc -B build -DGLFW_BUILD_X11=OFF -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
       - name: build debug
@@ -37,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: init
-        run: uname -m; sudo apt update -yqq && sudo apt install -yqq ninja-build mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
+        run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
       - name: configure
         run: cmake -S . --preset=ninja-clang -B build -DGLFW_BUILD_X11=OFF
       - name: build debug
@@ -53,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: init
-        run: uname -m; sudo apt update -yqq && sudo apt install -yqq ninja-build mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
+        run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
       - name: configure
         run: cmake -S . --preset=ninja-gcc -B build -DGLFW_BUILD_X11=OFF -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
       - name: build debug
@@ -69,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: init
-        run: uname -m; sudo apt update -yqq && sudo apt install -yqq ninja-build mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
+        run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
       - name: configure
         run: cmake -S . --preset=ninja-clang -B build -DGLFW_BUILD_X11=OFF
       - name: build debug
@@ -81,7 +80,7 @@ jobs:
       - name: test release
         run: cd build && ctest -V -C Release
   x64-windows-vs22:
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
       - name: configure
@@ -95,11 +94,9 @@ jobs:
       - name: test release
         run: cd build && ctest -V -C Release
   x64-windows-clang:
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
-      - name: init
-        run: choco install ninja
       - name: configure
         run: cmake -S . --preset=ninja-clang -B clang
       - name: build debug
@@ -110,3 +107,17 @@ jobs:
         run: cd clang && ctest -V -C Debug
       - name: test release
         run: cd clang && ctest -V -C Release
+  x64-mingw-gcc:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        run: cmake -S . --preset=ninja-gcc -B build
+      - name: build debug
+        run: cmake --build build --config=Debug --parallel
+      - name: build release
+        run: cmake --build build --config=Release --parallel
+      - name: test debug
+        run: cd build && ctest -V -C Debug
+      - name: test release
+        run: cd build && ctest -V -C Release

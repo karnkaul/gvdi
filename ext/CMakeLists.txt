@@ -1,7 +1,6 @@
 project(gvdi-ext)
 
 file(ARCHIVE_EXTRACT INPUT "${CMAKE_CURRENT_SOURCE_DIR}/src.zip" DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}")
-
 set(GLFW_BUILD_DOCS OFF)
 set(GLFW_INSTALL OFF)
 add_subdirectory(src/glfw)
@@ -33,6 +32,7 @@ target_sources(dear_imgui PRIVATE
 
 target_include_directories(dear_imgui SYSTEM PUBLIC
   src/dear_imgui
+  src/vulkan_headers/include
 )
 
 target_compile_definitions(dear_imgui PUBLIC
@@ -45,7 +45,6 @@ endif()
 
 target_link_libraries(dear_imgui PUBLIC
   glfw
-  Vulkan::Headers
 )
 
 target_link_libraries(${PROJECT_NAME} INTERFACE
