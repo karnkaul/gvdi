@@ -1,8 +1,11 @@
 #include <gvdi/app.hpp>
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <format>
 #include <iostream>
+#include <span>
+#include <string_view>
 
 namespace {
 using namespace std::chrono_literals;
@@ -45,8 +48,34 @@ class Fps {
 };
 
 class App : public gvdi::App {
-	// override this to customize window creation and install GLFW callbacks.
+  public:
+	// params to control GLFW init hints.
+	struct Params {
+		// force X11 instead of Wayland (Linux).
+		bool force_x11{false};
+		// disable libdecor (Wayland).
+		bool nolibdecor{false};
+	};
+
+	explicit App(Params const& params) : m_params(params) {}
+
+  private:
+	// set GLFW init hints here.
+	void pre_init() final {
+		if (m_params.force_x11 && glfwPlatformSupported(GLFW_PLATFORM_X11)) {
+			std::cout << "-- Forcing X11\n";
+			glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+		}
+		if (!m_params.force_x11 && m_params.nolibdecor && glfwPlatformSupported(GLFW_PLATFORM_WAYLAND)) {
+			std::cout << "-- Disabling libdecor\n";
+			glfwInitHint(GLFW_WAYLAND_LIBDECOR, GLFW_WAYLAND_DISABLE_LIBDECOR);
+		}
+	}
+
+	// set GLFW window hints and install callbacks here.
 	auto create_window() -> GLFWwindow* final {
+		// invisible window.
+		glfwInitHint(GLFW_VISIBLE, GLFW_FALSE);
 		// create a standard GLFW window.
 		// the NO_CLIENT_API window hint (for Vulkan) is already set, others can be set here.
 		auto* ret = glfwCreateWindow(1280, 720, "gvdi custom window", nullptr, nullptr);
@@ -67,6 +96,8 @@ class App : public gvdi::App {
 	}
 
 	void post_init() final {
+		// show the window now.
+		glfwShowWindow(get_window());
 		// set frame start timestamp.
 		m_frame_start = std::chrono::steady_clock::now();
 	}
@@ -95,15 +126,40 @@ class App : public gvdi::App {
 		if (key == GLFW_KEY_F && action == GLFW_RELEASE && mods == 0) { m_show_fps = !m_show_fps; }
 	}
 
+	Params m_params{};
+
 	Fps m_fps{};
 	std::chrono::steady_clock::time_point m_frame_start{std::chrono::steady_clock::now()};
 	bool m_show_fps{true};
 };
 } // namespace
 
-auto main() -> int {
+auto main(int argc, char** argv) -> int {
 	try {
-		auto app = App{};
+		auto exe_name = std::string{"<app>"};
+		auto args = std::span{argv, static_cast<std::size_t>(argc)};
+		if (!args.empty()) {
+			exe_name = std::filesystem::path{args.front()}.filename().string();
+			args = args.subspan(1);
+		}
+
+		auto params = App::Params{};
+		for (; !args.empty(); args = args.subspan(1)) {
+			std::string_view const arg = args.front();
+			if (arg == "--force-x11") {
+				params.force_x11 = true;
+			} else if (arg == "--nolibdecor") {
+				params.nolibdecor = true;
+			} else if (arg == "--help") {
+				std::cout << std::format("Usage: {} [--force-x11] [--nolibdecor]\n", exe_name);
+				return EXIT_SUCCESS;
+			} else {
+				std::cerr << std::format("Unrecognized option: {}\n", arg);
+				return EXIT_FAILURE;
+			}
+		}
+
+		auto app = App{params};
 		app.run();
 	} catch (std::exception const& e) {
 		std::cout << std::format("PANIC: {}\n", e.what());

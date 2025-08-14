@@ -19,7 +19,7 @@ class App {
 	explicit(false) App();
 
 	/// \brief Entrypoint. Returns after glfwWindowShouldClose() returns true.
-	void run();
+	void run() noexcept(false);
 
   protected:
 	/// \brief Customization point that's called before any initialization begins.

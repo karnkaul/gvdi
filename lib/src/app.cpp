@@ -519,7 +519,7 @@ void App::Deleter::operator()(Impl* ptr) const noexcept { std::default_delete<Im
 
 App::App() : m_impl(new Impl{*this}) {}
 
-void App::run() {
+void App::run() noexcept(false) {
 	if (!m_impl) { return; }
 	m_impl->run();
 }

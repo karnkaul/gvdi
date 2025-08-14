@@ -10,7 +10,6 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
   BASE_DIRS include FILES
   include/gvdi/app.hpp
-  include/gvdi/fwd.hpp
   include/gvdi/error.hpp
 )
 
