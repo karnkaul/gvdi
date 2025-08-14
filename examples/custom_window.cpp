@@ -1,7 +1,8 @@
 #include <gvdi/app.hpp>
 #include <chrono>
 #include <cstdlib>
-#include <print>
+#include <format>
+#include <iostream>
 
 namespace {
 using namespace std::chrono_literals;
@@ -105,10 +106,10 @@ auto main() -> int {
 		auto app = App{};
 		app.run();
 	} catch (std::exception const& e) {
-		std::println("PANIC: {}", e.what());
+		std::cout << std::format("PANIC: {}\n", e.what());
 		return EXIT_FAILURE;
 	} catch (...) {
-		std::println("PANIC!");
+		std::cout << "PANIC!\n";
 		return EXIT_FAILURE;
 	}
 }

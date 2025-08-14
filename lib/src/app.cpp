@@ -282,9 +282,10 @@ struct Vulkan {
 		auto const get_queue_family = [surface = *m_surface](vk::PhysicalDevice const& device,
 															 std::uint32_t& out_family) {
 			static constexpr auto queue_flags_v = vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eTransfer;
-			for (auto [family, properties] : std::views::enumerate(device.getQueueFamilyProperties())) {
+			auto const properties = device.getQueueFamilyProperties();
+			for (std::uint32_t family = 0; family < static_cast<std::uint32_t>(properties.size()); ++family) {
 				if (device.getSurfaceSupportKHR(family, surface) == 0) { continue; }
-				if (!(properties.queueFlags & queue_flags_v)) { continue; }
+				if (!(properties[family].queueFlags & queue_flags_v)) { continue; }
 				out_family = family;
 				return true;
 			}
