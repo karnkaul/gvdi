@@ -74,11 +74,12 @@ class App : public gvdi::App {
 
 	// set GLFW window hints and install callbacks here.
 	auto create_window() -> GLFWwindow* final {
+		// the NO_CLIENT_API window hint (for Vulkan) is already set, others can be set here.
 		// invisible window.
 		glfwInitHint(GLFW_VISIBLE, GLFW_FALSE);
 		// create a standard GLFW window.
-		// the NO_CLIENT_API window hint (for Vulkan) is already set, others can be set here.
-		auto* ret = glfwCreateWindow(1280, 720, "gvdi custom window", nullptr, nullptr);
+		auto const title = std::format("gvdi v{}", gvdi::build_version_v);
+		auto* ret = glfwCreateWindow(1280, 720, title.c_str(), nullptr, nullptr);
 
 		glfwSetWindowUserPointer(ret, this);
 
