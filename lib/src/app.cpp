@@ -9,11 +9,10 @@
 #include <chrono>
 #include <format>
 #include <optional>
-#include <ranges>
 #include <sstream>
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-// VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 namespace gvdi {
 namespace {

@@ -8,8 +8,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 )
 
 target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
-  BASE_DIRS include
-  FILES include/gvdi/context.hpp
+  BASE_DIRS include FILES
+  include/gvdi/app.hpp
+  include/gvdi/fwd.hpp
+  include/gvdi/error.hpp
 )
 
 target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
@@ -18,9 +20,6 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
 )
 
 target_sources(${PROJECT_NAME} PRIVATE
-  include/gvdi/app.hpp
-  include/gvdi/error.hpp
-  src/context.cpp
   src/app.cpp
 )
 
