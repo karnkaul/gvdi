@@ -36,6 +36,9 @@ class App {
 	/// \brief Required customization point, called every frame.
 	virtual void update() = 0;
 
+	/// \brief Customization point that's called after the run loop has finished.
+	virtual void post_run() {}
+
 	/// \returns Pointer to GLFW window, null until create_window() has been called.
 	[[nodiscard]] auto get_window() const -> GLFWwindow*;
 

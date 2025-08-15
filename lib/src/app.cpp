@@ -478,6 +478,7 @@ class App::Impl {
 			};
 			m_vulkan->execute_pass(Glfw::framebuffer_extent(m_window.get()), {}, render);
 		}
+		m_app.post_run();
 	}
 
 	[[nodiscard]] auto get_window() const -> GLFWwindow* { return m_window.get(); }
