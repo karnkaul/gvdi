@@ -70,6 +70,7 @@ class App : public gvdi::App {
 			std::cout << "-- Disabling libdecor\n";
 			glfwInitHint(GLFW_WAYLAND_LIBDECOR, GLFW_WAYLAND_DISABLE_LIBDECOR);
 		}
+		std::cout << "Initializing...\n";
 	}
 
 	// set GLFW window hints and install callbacks here.
@@ -101,6 +102,8 @@ class App : public gvdi::App {
 		glfwShowWindow(get_window());
 		// set frame start timestamp.
 		m_frame_start = std::chrono::steady_clock::now();
+
+		std::cout << "... Initialized\n";
 	}
 
 	void update() final {
@@ -116,6 +119,8 @@ class App : public gvdi::App {
 		ImGui::ShowDemoWindow();
 		if (m_show_fps) { m_fps.draw(m_show_fps); }
 	}
+
+	void post_run() final { std::cout << "Exiting\n"; }
 
 	void on_key(int const key, int const action, int const mods) {
 		// close on Ctrl + W.

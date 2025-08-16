@@ -19,6 +19,8 @@ class App {
 	explicit(false) App();
 
 	/// \brief Entrypoint. Returns after glfwWindowShouldClose() returns true.
+	/// Can be called again after it returns.
+	/// Note: reruns can sometimes cause issues if libdecor is enabled on Wayland.
 	void run() noexcept(false);
 
   protected:
@@ -35,6 +37,11 @@ class App {
 
 	/// \brief Required customization point, called every frame.
 	virtual void update() = 0;
+
+	/// \brief Customization point that's called after the run loop has finished.
+	/// Each call of run() will end in a call to post_run() (unless exceptions were thrown).
+	/// In contrast, ~App() will only be called once during its lifetime (obviously).
+	virtual void post_run() {}
 
 	/// \returns Pointer to GLFW window, null until create_window() has been called.
 	[[nodiscard]] auto get_window() const -> GLFWwindow*;

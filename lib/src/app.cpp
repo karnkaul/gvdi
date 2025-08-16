@@ -478,6 +478,8 @@ class App::Impl {
 			};
 			m_vulkan->execute_pass(Glfw::framebuffer_extent(m_window.get()), {}, render);
 		}
+		m_app.post_run();
+		deinit();
 	}
 
 	[[nodiscard]] auto get_window() const -> GLFWwindow* { return m_window.get(); }
@@ -493,6 +495,13 @@ class App::Impl {
 		m_vulkan.emplace(m_window.get());
 		m_vulkan->create_dear_imgui(m_dear_imgui, m_window.get());
 		m_app.post_init();
+	}
+
+	void deinit() {
+		m_dear_imgui.reset();
+		m_vulkan.reset();
+		m_window.reset();
+		m_glfw.reset();
 	}
 
 	void create_window() {
