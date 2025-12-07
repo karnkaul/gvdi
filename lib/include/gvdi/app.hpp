@@ -1,7 +1,7 @@
 #pragma once
+#include "gvdi/build_version.hpp"
 #include <GLFW/glfw3.h>
 #include <imgui.h>
-#include <gvdi/build_version.hpp>
 #include <memory>
 
 namespace gvdi {
