@@ -1,20 +1,11 @@
 #pragma once
-#include <cstdint>
+#include "gvdi/gpu_info.hpp"
 #include <optional>
 #include <span>
-#include <string_view>
 
 namespace gvdi {
 /// \brief Represents a viable GPU.
 enum struct GpuHandle : std::int8_t {};
-
-/// \brief GPU metadata, can be inspected during selection.
-struct GpuInfo {
-	enum class Type : std::int8_t { Other, Discrete, Integrated, Cpu, Virtual };
-
-	Type type{Type::Other};
-	std::string_view name{};
-};
 
 /// \brief Opaque interface for GPU selection.
 class GpuSelector {
