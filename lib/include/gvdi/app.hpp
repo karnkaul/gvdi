@@ -1,7 +1,8 @@
 #pragma once
+#include "gvdi/build_version.hpp"
+#include "gvdi/gpu_selector.hpp"
 #include <GLFW/glfw3.h>
 #include <imgui.h>
-#include <gvdi/build_version.hpp>
 #include <memory>
 
 namespace gvdi {
@@ -31,6 +32,8 @@ class App {
 	/// Default implementation returns a 800x600 decorated window on the default monitor.
 	/// Use this to install GLFW callbacks etc before returning.
 	virtual auto create_window() -> GLFWwindow*;
+	/// \brief Customization point for GPU selection.
+	virtual void select_gpu(GpuSelector& /*gpu_selector*/) {}
 	/// \brief Customization point that's called after initialization.
 	/// Use this to tweak ImGuiIO (eg to set up keyboard / gamepad navigation) etc.
 	virtual void post_init() {}
@@ -43,8 +46,11 @@ class App {
 	/// In contrast, ~App() will only be called once during its lifetime (obviously).
 	virtual void post_run() {}
 
-	/// \returns Pointer to GLFW window, null until create_window() has been called.
+	/// \returns Pointer to GLFW window, null until create_window() has returned.
 	[[nodiscard]] auto get_window() const -> GLFWwindow*;
+
+	/// \returns Selected GpuInfo, default initialized until select_gpu() has returned.
+	[[nodiscard]] auto get_gpu_info() const -> GpuInfo;
 
   private:
 	class Impl;
