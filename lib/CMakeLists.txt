@@ -19,5 +19,5 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
 )
 
 target_sources(${PROJECT_NAME} PRIVATE
-  src/app.cpp
+  src/gvdi.cpp
 )
