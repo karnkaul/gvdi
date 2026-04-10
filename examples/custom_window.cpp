@@ -95,30 +95,19 @@ class App : public gvdi::App {
 		glfwSetWindowUserPointer(ret, this);
 
 		// convenience function to cast the data pointer back to App.
-		static auto const self = [](GLFWwindow* window) -> App& {
-			return *static_cast<App*>(glfwGetWindowUserPointer(window));
-		};
+		static auto const self = [](GLFWwindow* window) -> App& { return *static_cast<App*>(glfwGetWindowUserPointer(window)); };
 
 		// install a key callback.
-		glfwSetKeyCallback(ret, [](GLFWwindow* window, int key, int /*scancode*/, int action, int mods) {
-			self(window).on_key(key, action, mods);
-		});
+		glfwSetKeyCallback(
+			ret, [](GLFWwindow* window, int key, int /*scancode*/, int action, int mods) { self(window).on_key(key, action, mods); });
 
 		return ret;
 	}
 
-	void select_gpu(gvdi::gpu::Selector& gpu_selector) final {
-		auto const gpu_handles = gpu_selector.enumerate_handles();
-		std::cout << "Viable GPUs:\n";
-		for (auto const handle : gpu_handles) {
-			auto const gpu_info = gpu_selector.get_info(handle);
-			if (!gpu_info) { continue; }
-			std::cout << std::format("- [{}] {} ({})\n", int(handle), gpu_info->name, to_string_view(gpu_info->type));
-		}
-		std::cout << std::format("Using GPU [{}]\n", int(gpu_selector.get_selected()));
-	}
-
 	void post_init() final {
+		auto const gpu_info = get_gpu_info();
+		std::cout << std::format("Using GPU: {} [{}]\n", gpu_info.name, to_string_view(gpu_info.type));
+
 		// show the window now.
 		glfwShowWindow(get_window());
 		// set frame start timestamp.

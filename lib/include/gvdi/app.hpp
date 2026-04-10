@@ -1,16 +1,23 @@
 #pragma once
 #include "gvdi/build_version.hpp"
-#include "gvdi/gpu/info.hpp"
-#include "gvdi/gpu/selector.hpp"
+#include "gvdi/gpu.hpp"
 #include <GLFW/glfw3.h>
 #include <imgui.h>
+#include <array>
 #include <memory>
+#include <span>
 
 namespace gvdi {
 /// \brief Abstract base class for a windowed app.
 /// Having more than one App instance is unsupported.
 class App {
   public:
+	static constexpr auto gpu_priority_v = std::array{
+		gpu::Type::Integrated,
+		gpu::Type::Discrete,
+		gpu::Type::Cpu,
+	};
+
 	App(App const&) = delete;
 	App(App&&) = delete;
 	auto operator=(App const&) = delete;
@@ -33,8 +40,8 @@ class App {
 	/// Default implementation returns a 800x600 decorated window on the default monitor.
 	/// Use this to install GLFW callbacks etc before returning.
 	virtual auto create_window() -> GLFWwindow*;
-	/// \brief Customization point for GPU selection.
-	virtual void select_gpu(gpu::Selector& /*gpu_selector*/) {}
+	/// \brief List of GPU types in desired selection order.
+	[[nodiscard]] virtual auto get_gpu_type_priority() const -> std::span<gpu::Type const> { return gpu_priority_v; }
 	/// \brief Customization point that's called after initialization.
 	/// Use this to tweak ImGuiIO (eg to set up keyboard / gamepad navigation) etc.
 	virtual void post_init() {}
