@@ -1,6 +1,7 @@
 #pragma once
 #include "gvdi/build_version.hpp"
-#include "gvdi/gpu_selector.hpp"
+#include "gvdi/gpu/info.hpp"
+#include "gvdi/gpu/selector.hpp"
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <memory>
@@ -33,7 +34,7 @@ class App {
 	/// Use this to install GLFW callbacks etc before returning.
 	virtual auto create_window() -> GLFWwindow*;
 	/// \brief Customization point for GPU selection.
-	virtual void select_gpu(GpuSelector& /*gpu_selector*/) {}
+	virtual void select_gpu(gpu::Selector& /*gpu_selector*/) {}
 	/// \brief Customization point that's called after initialization.
 	/// Use this to tweak ImGuiIO (eg to set up keyboard / gamepad navigation) etc.
 	virtual void post_init() {}
@@ -49,8 +50,8 @@ class App {
 	/// \returns Pointer to GLFW window, null until create_window() has returned.
 	[[nodiscard]] auto get_window() const -> GLFWwindow*;
 
-	/// \returns Selected GpuInfo, default initialized until select_gpu() has returned.
-	[[nodiscard]] auto get_gpu_info() const -> GpuInfo;
+	/// \returns Selected gpu::Info, default initialized until select_gpu() has returned.
+	[[nodiscard]] auto get_gpu_info() const -> gpu::Info;
 
   private:
 	class Impl;

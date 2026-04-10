@@ -10,12 +10,12 @@
 namespace {
 using namespace std::chrono_literals;
 
-[[nodiscard]] constexpr auto to_string_view(gvdi::GpuInfo::Type const gpu_type) -> std::string_view {
+[[nodiscard]] constexpr auto to_string_view(gvdi::gpu::Info::Type const gpu_type) -> std::string_view {
 	switch (gpu_type) {
-	case gvdi::GpuInfo::Type::Discrete: return "Discrete";
-	case gvdi::GpuInfo::Type::Integrated: return "Integrated";
-	case gvdi::GpuInfo::Type::Cpu: return "Cpu";
-	case gvdi::GpuInfo::Type::Virtual: return "Virtual";
+	case gvdi::gpu::Info::Type::Discrete: return "Discrete";
+	case gvdi::gpu::Info::Type::Integrated: return "Integrated";
+	case gvdi::gpu::Info::Type::Cpu: return "Cpu";
+	case gvdi::gpu::Info::Type::Virtual: return "Virtual";
 	default: return "Other";
 	}
 }
@@ -107,7 +107,7 @@ class App : public gvdi::App {
 		return ret;
 	}
 
-	void select_gpu(gvdi::GpuSelector& gpu_selector) final {
+	void select_gpu(gvdi::gpu::Selector& gpu_selector) final {
 		auto const gpu_handles = gpu_selector.enumerate_handles();
 		std::cout << "Viable GPUs:\n";
 		for (auto const handle : gpu_handles) {

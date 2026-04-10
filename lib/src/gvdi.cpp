@@ -1,6 +1,6 @@
 #include "gvdi/app.hpp"
 #include "gvdi/error.hpp"
-#include "gvdi/gpu_selector.hpp"
+#include "gvdi/gpu/selector.hpp"
 #include <GLFW/glfw3.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
@@ -126,12 +126,12 @@ struct DearImGui {
 	State m_state{State::Ended};
 };
 
-class GpuList : public GpuSelector {
+class GpuList : public gpu::Selector {
   public:
 	struct Gpu {
 		vk::PhysicalDevice device{};
 		std::uint32_t queue_family{};
-		GpuInfo::Type type{};
+		gpu::Info::Type type{};
 		std::string name{};
 	};
 
@@ -148,23 +148,23 @@ class GpuList : public GpuSelector {
   private:
 	enum struct GpuRank : std::int8_t {};
 
-	static constexpr auto get_rank(GpuInfo::Type const gpu_type) -> GpuRank {
+	static constexpr auto get_rank(gpu::Info::Type const gpu_type) -> GpuRank {
 		switch (gpu_type) {
-		case GpuInfo::Type::Discrete: return GpuRank{-10};
-		case GpuInfo::Type::Integrated: return GpuRank{-100};
-		case GpuInfo::Type::Cpu: return GpuRank{5};
-		case GpuInfo::Type::Virtual: return GpuRank{-5};
+		case gpu::Info::Type::Discrete: return GpuRank{-10};
+		case gpu::Info::Type::Integrated: return GpuRank{-100};
+		case gpu::Info::Type::Cpu: return GpuRank{5};
+		case gpu::Info::Type::Virtual: return GpuRank{-5};
 		default: return GpuRank{0};
 		}
 	}
 
-	[[nodiscard]] static constexpr auto to_gpu_type(vk::PhysicalDeviceType const in) -> GpuInfo::Type {
+	[[nodiscard]] static constexpr auto to_gpu_type(vk::PhysicalDeviceType const in) -> gpu::Info::Type {
 		switch (in) {
-		case vk::PhysicalDeviceType::eDiscreteGpu: return GpuInfo::Type::Discrete;
-		case vk::PhysicalDeviceType::eIntegratedGpu: return GpuInfo::Type::Integrated;
-		case vk::PhysicalDeviceType::eCpu: return GpuInfo::Type::Cpu;
-		case vk::PhysicalDeviceType::eVirtualGpu: return GpuInfo::Type::Virtual;
-		default: return GpuInfo::Type::Other;
+		case vk::PhysicalDeviceType::eDiscreteGpu: return gpu::Info::Type::Discrete;
+		case vk::PhysicalDeviceType::eIntegratedGpu: return gpu::Info::Type::Integrated;
+		case vk::PhysicalDeviceType::eCpu: return gpu::Info::Type::Cpu;
+		case vk::PhysicalDeviceType::eVirtualGpu: return gpu::Info::Type::Virtual;
+		default: return gpu::Info::Type::Other;
 		}
 	}
 
@@ -185,19 +185,19 @@ class GpuList : public GpuSelector {
 		return {};
 	}
 
-	[[nodiscard]] auto enumerate_handles() const -> std::span<GpuHandle const> final { return m_handles; }
+	[[nodiscard]] auto enumerate_handles() const -> std::span<gpu::Handle const> final { return m_handles; }
 
-	[[nodiscard]] auto get_selected() const -> GpuHandle final { return m_selected; }
+	[[nodiscard]] auto get_selected() const -> gpu::Handle final { return m_selected; }
 
-	auto set_selected(GpuHandle const handle) -> bool final {
+	auto set_selected(gpu::Handle const handle) -> bool final {
 		if (!m_gpu_map.contains(handle)) { return false; }
 		m_selected = handle;
 		return true;
 	}
 
-	[[nodiscard]] auto get_info(GpuHandle const handle) const -> std::optional<GpuInfo> final {
+	[[nodiscard]] auto get_info(gpu::Handle const handle) const -> std::optional<gpu::Info> final {
 		if (auto const it = m_gpu_map.find(handle); it != m_gpu_map.end()) {
-			return GpuInfo{.type = it->second.type, .name = it->second.name};
+			return gpu::Info{.type = it->second.type, .name = it->second.name};
 		}
 		return {};
 	}
@@ -214,7 +214,7 @@ class GpuList : public GpuSelector {
 			auto gpu = to_gpu(surface, device);
 			if (!gpu) { continue; }
 
-			auto const handle = GpuHandle(index);
+			auto const handle = gpu::Handle(index);
 			m_gpu_map.insert_or_assign(handle, std::move(*gpu));
 			m_handles.push_back(handle);
 		}
@@ -224,10 +224,10 @@ class GpuList : public GpuSelector {
 		m_selected = select_default();
 	}
 
-	[[nodiscard]] auto select_default() const -> GpuHandle {
+	[[nodiscard]] auto select_default() const -> gpu::Handle {
 		struct Entry {
 			GpuRank rank{};
-			GpuHandle handle{};
+			gpu::Handle handle{};
 		};
 
 		auto entries = std::vector<Entry>{};
@@ -241,9 +241,9 @@ class GpuList : public GpuSelector {
 		return entries.front().handle;
 	}
 
-	std::unordered_map<GpuHandle, Gpu> m_gpu_map{};
-	std::vector<GpuHandle> m_handles{};
-	GpuHandle m_selected{};
+	std::unordered_map<gpu::Handle, Gpu> m_gpu_map{};
+	std::vector<gpu::Handle> m_handles{};
+	gpu::Handle m_selected{};
 };
 
 struct Surface {
@@ -332,7 +332,7 @@ struct Vulkan {
 		m_swapchain.recreate(*m_device);
 	}
 
-	[[nodiscard]] auto get_gpu_info() const -> GpuInfo { return GpuInfo{.type = m_gpu.type, .name = m_gpu.name}; }
+	[[nodiscard]] auto get_gpu_info() const -> gpu::Info { return gpu::Info{.type = m_gpu.type, .name = m_gpu.name}; }
 
   private:
 	static constexpr auto is_linear(vk::Format const format) {
@@ -592,7 +592,7 @@ class App::Impl {
 
 	[[nodiscard]] auto get_window() const -> GLFWwindow* { return m_window.get(); }
 
-	[[nodiscard]] auto get_gpu_info() const -> GpuInfo {
+	[[nodiscard]] auto get_gpu_info() const -> gpu::Info {
 		if (!m_vulkan) { return {}; }
 		return m_vulkan->get_gpu_info();
 	}
@@ -644,20 +644,11 @@ void App::Deleter::operator()(Impl* ptr) const noexcept { std::default_delete<Im
 
 App::App() : m_impl(new Impl{*this}) {}
 
-void App::run() noexcept(false) {
-	if (!m_impl) { return; }
-	m_impl->run();
-}
+void App::run() noexcept(false) { m_impl->run(); }
 
-auto App::get_window() const -> GLFWwindow* {
-	if (!m_impl) { return nullptr; }
-	return m_impl->get_window();
-}
+auto App::get_window() const -> GLFWwindow* { return m_impl->get_window(); }
 
-auto App::get_gpu_info() const -> GpuInfo {
-	if (!m_impl) { return {}; }
-	return m_impl->get_gpu_info();
-}
+auto App::get_gpu_info() const -> gpu::Info { return m_impl->get_gpu_info(); }
 
 auto App::create_window() -> GLFWwindow* { return glfwCreateWindow(800, 600, "gvdi App", nullptr, nullptr); }
 } // namespace gvdi
