@@ -10,12 +10,12 @@
 namespace {
 using namespace std::chrono_literals;
 
-[[nodiscard]] constexpr auto to_string_view(gvdi::gpu::Info::Type const gpu_type) -> std::string_view {
+[[nodiscard]] constexpr auto to_string_view(gvdi::gpu::Type const gpu_type) -> std::string_view {
 	switch (gpu_type) {
-	case gvdi::gpu::Info::Type::Discrete: return "Discrete";
-	case gvdi::gpu::Info::Type::Integrated: return "Integrated";
-	case gvdi::gpu::Info::Type::Cpu: return "Cpu";
-	case gvdi::gpu::Info::Type::Virtual: return "Virtual";
+	case gvdi::gpu::Type::Discrete: return "Discrete";
+	case gvdi::gpu::Type::Integrated: return "Integrated";
+	case gvdi::gpu::Type::Cpu: return "Cpu";
+	case gvdi::gpu::Type::Virtual: return "Virtual";
 	default: return "Other";
 	}
 }
