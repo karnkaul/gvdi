@@ -31,7 +31,7 @@ class App : public EventListener {
 	/// \brief Entrypoint. Returns after glfwWindowShouldClose() returns true.
 	/// Can be called again after it returns.
 	/// Note: reruns can sometimes cause issues if libdecor is enabled on Wayland.
-	void run() noexcept(false);
+	void run_event_loop() noexcept(false);
 
   protected:
 	/// \brief Customization point that's called before any initialization begins.
@@ -53,6 +53,9 @@ class App : public EventListener {
 	/// Each call of run() will end in a call to post_run() (unless exceptions were thrown).
 	/// In contrast, ~App() will only be called once during its lifetime (obviously).
 	virtual void post_run() {}
+
+	/// \returns true inside run() loop.
+	[[nodiscard]] auto is_running() const -> bool;
 
 	/// \returns Pointer to GLFW window, null until create_window() has returned.
 	[[nodiscard]] auto get_window() const -> GLFWwindow*;

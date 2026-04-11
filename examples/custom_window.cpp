@@ -166,7 +166,7 @@ auto main(int argc, char** argv) -> int {
 		}
 
 		auto app = App{params};
-		app.run();
+		app.run_event_loop();
 	} catch (std::exception const& e) {
 		std::cout << std::format("PANIC: {}\n", e.what());
 		return EXIT_FAILURE;

@@ -1,5 +1,4 @@
 #include "gvdi/app.hpp"
-#include "gvdi/event_listener.hpp"
 #include "gvdi/exception.hpp"
 #include "gvdi/gpu.hpp"
 #include <GLFW/glfw3.h>
@@ -518,20 +517,22 @@ class App::Impl {
 	explicit Impl(App& app) : m_app(app) {}
 
 	void run() {
-		init();
+			init();
 		while (glfwWindowShouldClose(m_window.get()) == GLFW_FALSE) {
-			glfwPollEvents();
-			m_dear_imgui->begin_frame();
-			m_app.update();
-			m_dear_imgui->end_frame();
-			auto const render = [](vk::CommandBuffer const command_buffer) {
-				if (auto* draw_data = ImGui::GetDrawData()) { ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer); }
-			};
+				glfwPollEvents();
+				m_dear_imgui->begin_frame();
+				m_app.update();
+				m_dear_imgui->end_frame();
+				auto const render = [](vk::CommandBuffer const command_buffer) {
+					if (auto* draw_data = ImGui::GetDrawData()) { ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer); }
+				};
 			m_vulkan->execute_pass(Glfw::framebuffer_extent(m_window.get()), {}, render);
-		}
-		m_app.post_run();
-		deinit();
+			}
+			m_app.post_run();
+			deinit();
 	}
+
+	[[nodiscard]] auto is_running() const -> bool { return m_window != nullptr; }
 
 	[[nodiscard]] auto get_window() const -> GLFWwindow* { return m_window.get(); }
 
@@ -549,7 +550,7 @@ class App::Impl {
 		m_app.pre_init();
 		create_window();
 		create_vulkan();
-		m_vulkan->create_dear_imgui(m_dear_imgui, m_window.get());
+		m_vulkan->create_dear_imgui(m_dear_imgui, get_window());
 		m_app.post_init();
 	}
 
@@ -566,13 +567,13 @@ class App::Impl {
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		m_window.reset(m_app.create_window());
 		if (!m_window) { throw Exception{"Failed to create Window"}; }
-		glfwSetWindowUserPointer(m_window.get(), this);
+		glfwSetWindowUserPointer(get_window(), this);
 		install_glfw_callbacks();
 	}
 
 	void install_glfw_callbacks() const {
 		static auto const self = [](GLFWwindow* window) -> Impl& { return *static_cast<Impl*>(glfwGetWindowUserPointer(window)); };
-		auto* window = m_window.get();
+		auto* window = get_window();
 
 		glfwSetWindowPosCallback(window, [](GLFWwindow* w, int x, int y) { self(w).m_app.on_window_reposition(x, y); });
 		glfwSetWindowSizeCallback(window, [](GLFWwindow* w, int x, int y) { self(w).m_app.on_window_resize(x, y); });
@@ -594,7 +595,7 @@ class App::Impl {
 	}
 
 	void create_vulkan() {
-		auto surface = Surface{m_window.get()};
+		auto surface = Surface{get_window()};
 		auto gpu = PhysicalDevice::select(m_app.get_gpu_type_priority(), surface);
 		m_vulkan.emplace(std::move(surface), std::move(gpu));
 	}
@@ -628,7 +629,9 @@ void App::Deleter::operator()(Impl* ptr) const noexcept { std::default_delete<Im
 
 App::App() : m_impl(new Impl{*this}) {}
 
-void App::run() noexcept(false) { m_impl->run(); }
+void App::run_event_loop() noexcept(false) { m_impl->run(); }
+
+auto App::is_running() const -> bool { return m_impl->is_running(); }
 
 auto App::get_window() const -> GLFWwindow* { return m_impl->get_window(); }
 
