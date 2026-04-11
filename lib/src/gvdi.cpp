@@ -1,4 +1,5 @@
 #include "gvdi/app.hpp"
+#include "gvdi/build_version.hpp"
 #include "gvdi/exception.hpp"
 #include "gvdi/gpu.hpp"
 #include <GLFW/glfw3.h>

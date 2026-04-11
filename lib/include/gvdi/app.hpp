@@ -1,5 +1,4 @@
 #pragma once
-#include "gvdi/build_version.hpp"
 #include "gvdi/event_listener.hpp"
 #include "gvdi/gpu.hpp"
 #include <GLFW/glfw3.h>

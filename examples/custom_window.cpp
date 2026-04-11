@@ -1,5 +1,6 @@
 #include "GLFW/glfw3.h"
 #include "gvdi/app.hpp"
+#include "gvdi/build_version.hpp"
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
