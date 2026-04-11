@@ -1,4 +1,5 @@
 #include "gvdi/app.hpp"
+#include "gvdi/event_listener.hpp"
 #include "gvdi/exception.hpp"
 #include "gvdi/gpu.hpp"
 #include <GLFW/glfw3.h>
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <cstddef>
 #include <format>
 #include <optional>
 #include <sstream>
@@ -564,12 +566,54 @@ class App::Impl {
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		m_window.reset(m_app.create_window());
 		if (!m_window) { throw Exception{"Failed to create Window"}; }
+		glfwSetWindowUserPointer(m_window.get(), this);
+		install_glfw_callbacks();
+	}
+
+	void install_glfw_callbacks() const {
+		static auto const self = [](GLFWwindow* window) -> Impl& { return *static_cast<Impl*>(glfwGetWindowUserPointer(window)); };
+		auto* window = m_window.get();
+
+		glfwSetWindowPosCallback(window, [](GLFWwindow* w, int x, int y) { self(w).m_app.on_window_reposition(x, y); });
+		glfwSetWindowSizeCallback(window, [](GLFWwindow* w, int x, int y) { self(w).m_app.on_window_resize(x, y); });
+		glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, int x, int y) { self(w).m_app.on_framebuffer_resize(x, y); });
+		glfwSetWindowCloseCallback(window, [](GLFWwindow* w) { self(w).m_app.on_window_close(); });
+		glfwSetWindowFocusCallback(window, [](GLFWwindow* w, int b) { self(w).m_app.on_window_focus(b == GLFW_TRUE); });
+		glfwSetWindowIconifyCallback(window, [](GLFWwindow* w, int b) { self(w).m_app.on_window_iconify(b == GLFW_TRUE); });
+		glfwSetWindowMaximizeCallback(window, [](GLFWwindow* w, int b) { self(w).m_app.on_window_maximize(b == GLFW_TRUE); });
+
+		glfwSetKeyCallback(window, [](GLFWwindow* w, int k, int s, int a, int m) { self(w).on_key(k, s, a, m); });
+		glfwSetCharCallback(window, [](GLFWwindow* w, unsigned int codepoint) { self(w).m_app.on_character(codepoint); });
+
+		glfwSetCursorPosCallback(window, [](GLFWwindow* w, double x, double y) { self(w).m_app.on_cursor_reposition(x, y); });
+		glfwSetCursorEnterCallback(window, [](GLFWwindow* w, int b) { self(w).m_app.on_cursor_enter(b == GLFW_TRUE); });
+		glfwSetMouseButtonCallback(window, [](GLFWwindow* w, int b, int a, int m) { self(w).on_mouse_button(b, a, m); });
+		glfwSetScrollCallback(window, [](GLFWwindow* w, double x, double y) { self(w).m_app.on_mouse_scroll(x, y); });
+
+		glfwSetDropCallback(window, [](GLFWwindow* w, int c, char const** p) { self(w).m_app.on_path_drop({p, std::size_t(c)}); });
 	}
 
 	void create_vulkan() {
 		auto surface = Surface{m_window.get()};
 		auto gpu = PhysicalDevice::select(m_app.get_gpu_type_priority(), surface);
 		m_vulkan.emplace(std::move(surface), std::move(gpu));
+	}
+
+	void on_key(int const key, int const scancode, int const action, int const mods) {
+		switch (action) {
+		case GLFW_PRESS: m_app.on_key_press(key, scancode, mods); break;
+		case GLFW_RELEASE: m_app.on_key_release(key, scancode, mods); break;
+		case GLFW_REPEAT: m_app.on_key_repeat(key, scancode, mods); break;
+		default: break;
+		}
+	}
+
+	void on_mouse_button(int const button, int const action, int const mods) {
+		switch (action) {
+		case GLFW_PRESS: m_app.on_mouse_button_press(button, mods); break;
+		case GLFW_RELEASE: m_app.on_mouse_button_release(button, mods); break;
+		default: break;
+		}
 	}
 
 	App& m_app;

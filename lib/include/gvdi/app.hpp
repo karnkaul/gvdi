@@ -1,5 +1,6 @@
 #pragma once
 #include "gvdi/build_version.hpp"
+#include "gvdi/event_listener.hpp"
 #include "gvdi/gpu.hpp"
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -10,7 +11,7 @@
 namespace gvdi {
 /// \brief Abstract base class for a windowed app.
 /// Having more than one App instance is unsupported.
-class App {
+class App : public EventListener {
   public:
 	static constexpr auto gpu_priority_v = std::array{
 		gpu::Type::Integrated,
@@ -38,7 +39,6 @@ class App {
 	virtual void pre_init() {}
 	/// \brief Customization point for creating a window.
 	/// Default implementation returns a 800x600 decorated window on the default monitor.
-	/// Use this to install GLFW callbacks etc before returning.
 	virtual auto create_window() -> GLFWwindow*;
 	/// \brief List of GPU types in desired selection order.
 	[[nodiscard]] virtual auto get_gpu_type_priority() const -> std::span<gpu::Type const> { return gpu_priority_v; }

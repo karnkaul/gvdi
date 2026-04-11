@@ -1,3 +1,4 @@
+#include "GLFW/glfw3.h"
 #include "gvdi/app.hpp"
 #include <chrono>
 #include <cstdlib>
@@ -83,25 +84,14 @@ class App : public gvdi::App {
 		std::cout << "Initializing...\n";
 	}
 
-	// set GLFW window hints and install callbacks here.
+	// set GLFW window hints here.
 	auto create_window() -> GLFWwindow* final {
 		// the NO_CLIENT_API window hint (for Vulkan) is already set, others can be set here.
 		// invisible window.
-		glfwInitHint(GLFW_VISIBLE, GLFW_FALSE);
+		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 		// create a standard GLFW window.
 		auto const title = std::format("gvdi v{}", gvdi::build_version_v);
-		auto* ret = glfwCreateWindow(1280, 720, title.c_str(), nullptr, nullptr);
-
-		glfwSetWindowUserPointer(ret, this);
-
-		// convenience function to cast the data pointer back to App.
-		static auto const self = [](GLFWwindow* window) -> App& { return *static_cast<App*>(glfwGetWindowUserPointer(window)); };
-
-		// install a key callback.
-		glfwSetKeyCallback(
-			ret, [](GLFWwindow* window, int key, int /*scancode*/, int action, int mods) { self(window).on_key(key, action, mods); });
-
-		return ret;
+		return glfwCreateWindow(1280, 720, title.c_str(), nullptr, nullptr);
 	}
 
 	void post_init() final {
@@ -132,14 +122,14 @@ class App : public gvdi::App {
 
 	void post_run() final { std::cout << "Exiting\n"; }
 
-	void on_key(int const key, int const action, int const mods) {
+	void on_key_press(int const key, int /*scancode*/, int const mods) final {
 		// close on Ctrl + W.
-		if (key == GLFW_KEY_W && action == GLFW_PRESS && (mods & GLFW_MOD_CONTROL) == GLFW_MOD_CONTROL) {
-			glfwSetWindowShouldClose(get_window(), GLFW_TRUE);
-		}
+		if (key == GLFW_KEY_W && (mods & GLFW_MOD_CONTROL) == GLFW_MOD_CONTROL) { glfwSetWindowShouldClose(get_window(), GLFW_TRUE); }
+	}
 
+	void on_key_release(int const key, int /*scancode*/, int const mods) final {
 		// toggle fps on F.
-		if (key == GLFW_KEY_F && action == GLFW_RELEASE && mods == 0) { m_show_fps = !m_show_fps; }
+		if (key == GLFW_KEY_F && mods == 0) { m_show_fps = !m_show_fps; }
 	}
 
 	Params m_params{};

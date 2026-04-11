@@ -10,7 +10,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
   BASE_DIRS include FILES
   include/gvdi/app.hpp
-  include/gvdi/error.hpp
+  include/gvdi/event_listener.hpp
+  include/gvdi/exception.hpp
+  include/gvdi/gpu.hpp
+  include/gvdi/polymorphic.hpp
 )
 
 target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
