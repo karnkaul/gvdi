@@ -28,31 +28,51 @@ class App : public EventListener {
 
 	explicit(false) App();
 
-	/// \brief Entrypoint. Returns after glfwWindowShouldClose() returns true.
-	/// Can be called again after it returns.
-	/// Note: reruns can sometimes cause issues if libdecor is enabled on Wayland.
+	/// \brief Entrypoint. Returns after the window and all associated resources have been destroyed.
+	/// GLFW remains initialized until App is destroyed.
+	///
+	/// Note: reruns can sometimes cause issues if libdecor is enabled on Wayland,
+	/// prefer using enqueue_recreate() when feasible.
 	void run_event_loop() noexcept(false);
 
+	/// \returns true if resource recreation is enqueued.
+	[[nodiscard]] auto is_recreate_enqueued() const -> bool;
+	/// \brief Enqueue recreation of all resources (and Stage callbacks) at the end of this frame.
+	void enqueue_recreate();
+
   protected:
-	/// \brief Customization point that's called before any initialization begins.
-	/// Use this to set GLFW init hints etc.
-	virtual void pre_init() {}
-	/// \brief Customization point for creating a window.
-	/// Default implementation returns a 800x600 decorated window on the default monitor.
-	virtual auto create_window() -> GLFWwindow*;
-	/// \brief List of GPU types in desired selection order.
-	[[nodiscard]] virtual auto get_gpu_type_priority() const -> std::span<gpu::Type const> { return gpu_priority_v; }
-	/// \brief Customization point that's called after initialization.
-	/// Use this to tweak ImGuiIO (eg to set up keyboard / gamepad navigation) etc.
-	virtual void post_init() {}
+	[[nodiscard]] static auto create_windowed_window(char const* title, int width = 800, int height = 600) -> GLFWwindow*;
+	[[nodiscard]] static auto create_fullscreen_window(char const* title) -> GLFWwindow*;
 
 	/// \brief Required customization point, called every frame.
 	virtual void update() = 0;
 
-	/// \brief Customization point that's called after the run loop has finished.
-	/// Each call of run() will end in a call to post_run() (unless exceptions were thrown).
-	/// In contrast, ~App() will only be called once during its lifetime (obviously).
-	virtual void post_run() {}
+	/// \brief Customization point for creating a GLFW window.
+	virtual auto create_glfw_window() -> GLFWwindow* { return create_windowed_window("gvdi App"); }
+	/// \brief List of GPU types in desired selection order.
+	[[nodiscard]] virtual auto get_gpu_type_priority() const -> std::span<gpu::Type const> { return gpu_priority_v; }
+
+	/// \brief Called before the event loop begins.
+	virtual void pre_event_loop() {}
+	/// \brief Called before first frame for the current window begins.
+	virtual void pre_first_frame() {}
+	/// \brief Called before run_event_loop() returns.
+	virtual void post_event_loop() {}
+
+	/// Customization points for stages in run_event_loop(). If overridden,
+	/// the derived type must call the corresponding base implementations.
+
+	/// \brief Initialize GLFW.
+	/// Should only be done once per program lifetime.
+	virtual void stage_initialize();
+	/// \brief Create resources (window, Vulkan, Dear ImGui).
+	virtual void stage_create();
+	/// \brief Destroy and recreate window and associated resources.
+	/// Only called if enqueue_recreate() was called earlier in the frame.
+	/// Calls stage_destroy(), stage_create(), and pre_first_frame() in turn.
+	virtual void stage_recreate();
+	/// \brief Destroy window and associated resources.
+	virtual void stage_destroy();
 
 	/// \returns true inside run() loop.
 	[[nodiscard]] auto is_running() const -> bool;
@@ -60,7 +80,7 @@ class App : public EventListener {
 	/// \returns Pointer to GLFW window, null until create_window() has returned.
 	[[nodiscard]] auto get_window() const -> GLFWwindow*;
 
-	/// \returns Selected gpu::Info, default initialized until select_gpu() has returned.
+	/// \returns Selected gpu::Info, default initialized until create_window() has returned.
 	[[nodiscard]] auto get_gpu_info() const -> gpu::Info;
 
   private:

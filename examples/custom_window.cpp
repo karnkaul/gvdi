@@ -11,16 +11,6 @@
 namespace {
 using namespace std::chrono_literals;
 
-[[nodiscard]] constexpr auto to_string_view(gvdi::gpu::Type const gpu_type) -> std::string_view {
-	switch (gpu_type) {
-	case gvdi::gpu::Type::Discrete: return "Discrete";
-	case gvdi::gpu::Type::Integrated: return "Integrated";
-	case gvdi::gpu::Type::Cpu: return "Cpu";
-	case gvdi::gpu::Type::Virtual: return "Virtual";
-	default: return "Other";
-	}
-}
-
 class Fps {
   public:
 	explicit(false) Fps() {
@@ -71,44 +61,11 @@ class App : public gvdi::App {
 	explicit App(Params const& params) : m_params(params) {}
 
   private:
-	// set GLFW init hints here.
-	void pre_init() final {
-		if (m_params.force_x11 && glfwPlatformSupported(GLFW_PLATFORM_X11)) {
-			std::cout << "-- Forcing X11\n";
-			glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
-		}
-		if (!m_params.force_x11 && m_params.nolibdecor && glfwPlatformSupported(GLFW_PLATFORM_WAYLAND)) {
-			std::cout << "-- Disabling libdecor\n";
-			glfwInitHint(GLFW_WAYLAND_LIBDECOR, GLFW_WAYLAND_DISABLE_LIBDECOR);
-		}
-		std::cout << "Initializing...\n";
-	}
-
-	// set GLFW window hints here.
-	auto create_window() -> GLFWwindow* final {
-		// the NO_CLIENT_API window hint (for Vulkan) is already set, others can be set here.
-		// invisible window.
-		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-		// create a standard GLFW window.
-		auto const title = std::format("gvdi v{}", gvdi::build_version_v);
-		return glfwCreateWindow(1280, 720, title.c_str(), nullptr, nullptr);
-	}
-
-	void post_init() final {
-		auto const gpu_info = get_gpu_info();
-		std::cout << std::format("Using GPU: {} [{}]\n", gpu_info.name, to_string_view(gpu_info.type));
-
-		// show the window now.
-		glfwShowWindow(get_window());
-		// set frame start timestamp.
-		m_frame_start = std::chrono::steady_clock::now();
-
-		std::cout << "... Initialized\n";
-	}
+	using Clock = std::chrono::steady_clock;
 
 	void update() final {
 		// compute delta time.
-		auto const now = std::chrono::steady_clock::now();
+		auto const now = Clock::now();
 		auto const dt = now - m_frame_start;
 		m_frame_start = now;
 
@@ -120,11 +77,55 @@ class App : public gvdi::App {
 		if (m_show_fps) { m_fps.draw(m_show_fps); }
 	}
 
-	void post_run() final { std::cout << "Exiting\n"; }
+	// set GLFW window hints here.
+	auto create_glfw_window() -> GLFWwindow* final {
+		// the NO_CLIENT_API window hint (for Vulkan) is already set, others can be set here.
+		// invisible window.
+		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+		// create a standard GLFW window.
+		auto const title = std::format("gvdi v{}", gvdi::build_version_v);
+		return create_windowed_window(title.c_str(), 1280, 720);
+	}
+
+	void pre_event_loop() final {
+		auto const gpu_info = get_gpu_info();
+		std::cout << std::format("Using GPU: {} [{}]\n", gpu_info.name, to_string_view(gpu_info.type));
+	}
+
+	void pre_first_frame() final {
+		// show the window now.
+		glfwShowWindow(get_window());
+		// set frame start timestamp.
+		m_frame_start = Clock::now();
+
+		std::cout << "Starting event loop\n";
+	}
+
+	void post_event_loop() final { std::cout << "Exiting\n"; }
+
+	// set GLFW init hints here.
+	void stage_initialize() final {
+		if (m_params.force_x11 && glfwPlatformSupported(GLFW_PLATFORM_X11)) {
+			std::cout << "-- Forcing X11\n";
+			glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+		}
+		if (!m_params.force_x11 && m_params.nolibdecor && glfwPlatformSupported(GLFW_PLATFORM_WAYLAND)) {
+			std::cout << "-- Disabling libdecor\n";
+			glfwInitHint(GLFW_WAYLAND_LIBDECOR, GLFW_WAYLAND_DISABLE_LIBDECOR);
+		}
+
+		gvdi::App::stage_initialize();
+	}
 
 	void on_key_press(int const key, int /*scancode*/, int const mods) final {
-		// close on Ctrl + W.
-		if (key == GLFW_KEY_W && (mods & GLFW_MOD_CONTROL) == GLFW_MOD_CONTROL) { glfwSetWindowShouldClose(get_window(), GLFW_TRUE); }
+		if ((mods & GLFW_MOD_CONTROL) == GLFW_MOD_CONTROL) {
+			switch (key) {
+			// close on Ctrl + W.
+			case GLFW_KEY_W: glfwSetWindowShouldClose(get_window(), GLFW_TRUE); break;
+			// recreate on Ctrl + R.
+			case GLFW_KEY_R: enqueue_recreate(); break;
+			}
+		}
 	}
 
 	void on_key_release(int const key, int /*scancode*/, int const mods) final {
@@ -135,7 +136,7 @@ class App : public gvdi::App {
 	Params m_params{};
 
 	Fps m_fps{};
-	std::chrono::steady_clock::time_point m_frame_start{std::chrono::steady_clock::now()};
+	Clock::time_point m_frame_start{Clock::now()};
 	bool m_show_fps{true};
 };
 } // namespace

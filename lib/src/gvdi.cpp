@@ -120,7 +120,6 @@ struct DearImGui {
 	}
 
 	~DearImGui() {
-		m_device.waitIdle();
 		ImGui_ImplVulkan_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
 		ImGui::DestroyContext();
@@ -265,10 +264,7 @@ struct Vulkan {
 		create_render_pass();
 	}
 
-	~Vulkan() {
-		if (!m_device) { return; }
-		m_device->waitIdle();
-	}
+	~Vulkan() { wait_idle(); }
 
 	void create_dear_imgui(std::optional<DearImGui>& out, GLFWwindow* window) {
 		out.emplace(window, *m_surface.instance, m_gpu.device, *m_device, m_gpu.queue_family, m_queue, *m_render_pass);
@@ -289,6 +285,11 @@ struct Vulkan {
 	}
 
 	[[nodiscard]] auto get_gpu_info() const -> gpu::Info { return gpu::Info{.type = m_gpu.type, .name = m_gpu.name}; }
+
+	void wait_idle() const {
+		if (!m_device) { return; }
+		m_device->waitIdle();
+	}
 
   private:
 	static constexpr auto is_linear(vk::Format const format) {
@@ -516,20 +517,32 @@ class App::Impl {
   public:
 	explicit Impl(App& app) : m_app(app) {}
 
-	void run() {
-			init();
-		while (glfwWindowShouldClose(m_window.get()) == GLFW_FALSE) {
-				glfwPollEvents();
-				m_dear_imgui->begin_frame();
-				m_app.update();
-				m_dear_imgui->end_frame();
-				auto const render = [](vk::CommandBuffer const command_buffer) {
-					if (auto* draw_data = ImGui::GetDrawData()) { ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer); }
-				};
-			m_vulkan->execute_pass(Glfw::framebuffer_extent(m_window.get()), {}, render);
+	void run_event_loop() {
+		m_app.stage_initialize();
+
+		m_app.stage_create();
+		m_app.pre_event_loop();
+
+		m_app.pre_first_frame();
+		while (glfwWindowShouldClose(get_window()) == GLFW_FALSE) {
+			glfwPollEvents();
+			m_dear_imgui->begin_frame();
+			m_app.update();
+			m_dear_imgui->end_frame();
+			auto const render = [](vk::CommandBuffer const command_buffer) {
+				if (auto* draw_data = ImGui::GetDrawData()) { ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer); }
+			};
+			m_vulkan->execute_pass(Glfw::framebuffer_extent(get_window()), {}, render);
+
+			if (m_recreate) {
+				m_app.stage_recreate();
+				m_recreate = false;
 			}
-			m_app.post_run();
-			deinit();
+		}
+
+		m_vulkan->wait_idle();
+		m_app.stage_destroy();
+		m_app.post_event_loop();
 	}
 
 	[[nodiscard]] auto is_running() const -> bool { return m_window != nullptr; }
@@ -541,35 +554,45 @@ class App::Impl {
 		return m_vulkan->get_gpu_info();
 	}
 
+	[[nodiscard]] auto is_recreate_enqueued() const -> bool { return m_recreate; }
+
+	void enqueue_recreate() {
+		if (m_recreate || !is_running() || glfwWindowShouldClose(get_window())) { return; }
+		m_recreate = true;
+		glfwSetWindowShouldClose(get_window(), GLFW_TRUE);
+	}
+
+	void stage_initialize() {
+		m_glfw.emplace();
+		if (glfwVulkanSupported() != GLFW_TRUE) { throw Exception{"GLFW: Vukan not supported"}; }
+	}
+
+	void stage_create() {
+		create_window();
+		create_vulkan();
+		m_vulkan->create_dear_imgui(m_dear_imgui, get_window());
+	}
+
+	void stage_destroy() {
+		if (!m_vulkan) { return; }
+		m_vulkan->wait_idle();
+		m_dear_imgui.reset();
+		m_vulkan.reset();
+		m_window.reset();
+	}
+
+	void create_window() {
+		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+		m_window.reset(m_app.create_glfw_window());
+		if (!m_window) { throw Exception{"Failed to create GLFW Window"}; }
+		glfwSetWindowUserPointer(get_window(), this);
+		install_glfw_callbacks();
+	}
+
   private:
 	struct Deleter {
 		void operator()(GLFWwindow* ptr) const noexcept { glfwDestroyWindow(ptr); }
 	};
-
-	void init() {
-		m_app.pre_init();
-		create_window();
-		create_vulkan();
-		m_vulkan->create_dear_imgui(m_dear_imgui, get_window());
-		m_app.post_init();
-	}
-
-	void deinit() {
-		m_dear_imgui.reset();
-		m_vulkan.reset();
-		m_window.reset();
-		m_glfw.reset();
-	}
-
-	void create_window() {
-		m_glfw.emplace();
-		if (glfwVulkanSupported() != GLFW_TRUE) { throw Exception{"GLFW: Vukan not supported"}; }
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		m_window.reset(m_app.create_window());
-		if (!m_window) { throw Exception{"Failed to create Window"}; }
-		glfwSetWindowUserPointer(get_window(), this);
-		install_glfw_callbacks();
-	}
 
 	void install_glfw_callbacks() const {
 		static auto const self = [](GLFWwindow* window) -> Impl& { return *static_cast<Impl*>(glfwGetWindowUserPointer(window)); };
@@ -623,13 +646,41 @@ class App::Impl {
 	std::unique_ptr<GLFWwindow, Deleter> m_window{};
 	std::optional<Vulkan> m_vulkan{};
 	std::optional<DearImGui> m_dear_imgui{};
+
+	bool m_recreate{};
 };
 
 void App::Deleter::operator()(Impl* ptr) const noexcept { std::default_delete<Impl>{}(ptr); }
 
 App::App() : m_impl(new Impl{*this}) {}
 
-void App::run_event_loop() noexcept(false) { m_impl->run(); }
+auto App::create_windowed_window(char const* title, int const width, int const height) -> GLFWwindow* {
+	return glfwCreateWindow(width, height, title, nullptr, nullptr);
+}
+
+auto App::create_fullscreen_window(char const* title) -> GLFWwindow* {
+	auto* monitor = glfwGetPrimaryMonitor();
+	auto const* video_mode = glfwGetVideoMode(monitor);
+	glfwWindowHint(GLFW_RED_BITS, video_mode->redBits);
+	glfwWindowHint(GLFW_GREEN_BITS, video_mode->greenBits);
+	glfwWindowHint(GLFW_BLUE_BITS, video_mode->blueBits);
+	glfwWindowHint(GLFW_REFRESH_RATE, video_mode->refreshRate);
+	return glfwCreateWindow(video_mode->width, video_mode->height, title, monitor, nullptr);
+}
+
+void App::run_event_loop() noexcept(false) { m_impl->run_event_loop(); }
+
+void App::stage_initialize() { m_impl->stage_initialize(); }
+
+void App::stage_create() { m_impl->stage_create(); }
+
+void App::stage_recreate() {
+	stage_destroy();
+	stage_create();
+	pre_first_frame();
+}
+
+void App::stage_destroy() { m_impl->stage_destroy(); }
 
 auto App::is_running() const -> bool { return m_impl->is_running(); }
 
@@ -637,5 +688,7 @@ auto App::get_window() const -> GLFWwindow* { return m_impl->get_window(); }
 
 auto App::get_gpu_info() const -> gpu::Info { return m_impl->get_gpu_info(); }
 
-auto App::create_window() -> GLFWwindow* { return glfwCreateWindow(800, 600, "gvdi App", nullptr, nullptr); }
+auto App::is_recreate_enqueued() const -> bool { return m_impl->is_recreate_enqueued(); }
+
+void App::enqueue_recreate() { m_impl->enqueue_recreate(); }
 } // namespace gvdi
