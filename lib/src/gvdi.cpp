@@ -570,12 +570,14 @@ class App::Impl {
 	}
 
 	void stage_initialize() {
+		if (m_glfw) { throw Exception{"App::stage_initialize(): already initialized"}; }
 		m_glfw.emplace();
 		if (glfwVulkanSupported() != GLFW_TRUE) { throw Exception{"App::stage_initialize(): GLFW: Vukan not supported"}; }
 	}
 
 	void stage_create() {
 		if (!m_glfw) { throw Exception{"App::stage_create(): stage_initialize() not called"}; }
+		if (m_window) { throw Exception{"App::stage_create(): already created"}; }
 		create_window();
 		create_renderer();
 		m_renderer->create_dear_imgui(m_dear_imgui, get_window());
