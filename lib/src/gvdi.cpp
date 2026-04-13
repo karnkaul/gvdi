@@ -107,7 +107,7 @@ class Glfw {
 	auto operator=(Glfw&&) = delete;
 
 	explicit Glfw() {
-		if (glfwInit() != GLFW_TRUE) { throw Exception{"Failed to initialize GLFW"}; }
+		if (glfwInit() != GLFW_TRUE) { throw Exception{"App::stage_initialize(): Failed to initialize GLFW"}; }
 	}
 
 	~Glfw() { glfwTerminate(); }
@@ -188,7 +188,7 @@ class Surface {
 	void create_instance() {
 		VULKAN_HPP_DEFAULT_DISPATCHER.init();
 		auto const api_version = vk::enumerateInstanceVersion();
-		if (api_version < vk_api_v) { throw Exception{"Vulkan 1.2 not supported by loader"}; }
+		if (api_version < vk_api_v) { throw Exception{"App::stage_initialize(): Vulkan 1.2 not supported by loader"}; }
 
 		auto ici = vk::InstanceCreateInfo{};
 		auto const version = to_vk_version(build_version_v);
@@ -215,7 +215,7 @@ class Surface {
 	void create_surface() {
 		VkSurfaceKHR raw_surface{};
 		auto const result = glfwCreateWindowSurface(*instance, window, nullptr, &raw_surface);
-		if (result != VK_SUCCESS || !raw_surface) { throw Exception{"Failed to create Window Surface"}; }
+		if (result != VK_SUCCESS || !raw_surface) { throw Exception{"App::stage_initialize(): Failed to create Window Surface"}; }
 		surface = vk::UniqueSurfaceKHR{raw_surface, *instance};
 	}
 
@@ -256,7 +256,7 @@ struct PhysicalDevice {
 		if (desired.empty()) { desired = App::gpu_priority_v; }
 
 		auto const viables = ViableDevice::build(*surface.instance, *surface.surface);
-		if (viables.empty()) { throw Exception{"Failed to find viable Vulkan Physical Device (GPU)"}; }
+		if (viables.empty()) { throw Exception{"App::stage_initialize(): Failed to find viable Vulkan Physical Device (GPU)"}; }
 
 		ViableDevice const* selected{};
 
@@ -376,7 +376,8 @@ class Renderer {
 		for (auto const* ext : required_extensions_v) {
 			auto const found = [ext](vk::ExtensionProperties const& props) { return std::string_view{props.extensionName} == ext; };
 			if (std::ranges::find_if(available_extensions, found) == available_extensions.end()) {
-				throw Exception{std::format("Required extension '", ext, "' not supported by selected GPU '", m_gpu.name, "'")};
+				throw Exception{
+					std::format("App::stage_initialize(): Required extension '{}' not supported by selected GPU '{}'", ext, m_gpu.name)};
 			}
 		}
 
@@ -443,7 +444,7 @@ class Renderer {
 		static constexpr auto max_timeout_v = static_cast<std::uint64_t>(std::chrono::nanoseconds(2s).count());
 
 		auto result = m_device->waitForFences(*m_render_fence, vk::True, max_timeout_v);
-		if (result != vk::Result::eSuccess) { throw Exception{"Failed to wait for Vulkan render Fence"}; }
+		if (result != vk::Result::eSuccess) { throw Exception{"Renderer::begin_pass(): Failed to wait for Vulkan render Fence"}; }
 		m_device->resetFences(*m_render_fence);
 
 		auto const caps = m_surface.get_capabilities(m_gpu.device);
@@ -457,7 +458,7 @@ class Renderer {
 			return false;
 		}
 		if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
-			throw Exception{"Failed to acquire Vulkan Swapchain Image"};
+			throw Exception{"Renderer::begin_pass(): Failed to acquire Vulkan Swapchain Image"};
 		}
 
 		m_image_index = image_index;
@@ -490,7 +491,7 @@ class Renderer {
 			.setWaitDstStageMask(wdsm)
 			.setSignalSemaphores(present_semaphore);
 		auto result = m_queue.submit(1, &si, *m_render_fence);
-		if (result != vk::Result::eSuccess) { throw Exception{"Failed to submit Vulkan render Command Buffer"}; }
+		if (result != vk::Result::eSuccess) { throw Exception{"Renderer::end_pass(): Failed to submit Vulkan render Command Buffer"}; }
 
 		auto pi = vk::PresentInfoKHR{};
 		pi.setSwapchains(*m_swapchain.swapchain).setImageIndices(image_index).setWaitSemaphores(present_semaphore);
@@ -563,22 +564,25 @@ class App::Impl {
 	[[nodiscard]] auto will_reboot() const -> bool { return m_reboot; }
 
 	void schedule_reboot() {
-		if (m_reboot || !is_running() || m_app.should_close_window()) { return; }
+		if (!m_glfw) { throw Exception{"App::schedule_reboot(): stage_initialize() not called"}; }
+		if (m_reboot || m_app.should_close_window()) { return; }
 		m_reboot = true;
 	}
 
 	void stage_initialize() {
 		m_glfw.emplace();
-		if (glfwVulkanSupported() != GLFW_TRUE) { throw Exception{"GLFW: Vukan not supported"}; }
+		if (glfwVulkanSupported() != GLFW_TRUE) { throw Exception{"App::stage_initialize(): GLFW: Vukan not supported"}; }
 	}
 
 	void stage_create() {
+		if (!m_glfw) { throw Exception{"App::stage_create(): stage_initialize() not called"}; }
 		create_window();
 		create_renderer();
 		m_renderer->create_dear_imgui(m_dear_imgui, get_window());
 	}
 
 	void stage_destroy() {
+		if (!m_glfw) { throw Exception{"App::stage_destroy(): stage_initialize() not called"}; }
 		if (!m_renderer) { return; }
 		m_renderer->wait_idle();
 		m_dear_imgui.reset();
@@ -589,7 +593,7 @@ class App::Impl {
 	void create_window() {
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		m_window.reset(m_app.create_glfw_window());
-		if (!m_window) { throw Exception{"Failed to create GLFW Window"}; }
+		if (!m_window) { throw Exception{"App::stage_initialize(): Failed to create GLFW Window"}; }
 		glfwSetWindowUserPointer(get_window(), this);
 		install_glfw_callbacks();
 	}
@@ -680,6 +684,7 @@ void App::stage_initialize() { m_impl->stage_initialize(); }
 void App::stage_create() { m_impl->stage_create(); }
 
 void App::stage_reboot() {
+	if (!m_impl->is_running()) { throw Exception{"App::stage_reboot(): not running"}; }
 	stage_destroy();
 	stage_create();
 	pre_first_frame();

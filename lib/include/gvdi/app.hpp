@@ -52,7 +52,7 @@ class App : public EventListener {
 	/// \brief List of GPU types in desired selection order.
 	[[nodiscard]] virtual auto get_gpu_type_priority() const -> std::span<gpu::Type const> { return gpu_priority_v; }
 
-	/// \brief Called before the event loop begins.
+	/// \brief Called after stage_create() and before the event loop begins.
 	virtual void pre_event_loop() {}
 	/// \brief Called before first frame for the current window begins.
 	virtual void pre_first_frame() {}
