@@ -1,6 +1,7 @@
 #include "gvdi/app.hpp"
-#include "gvdi/error.hpp"
-#include "gvdi/gpu_selector.hpp"
+#include "gvdi/build_version.hpp"
+#include "gvdi/exception.hpp"
+#include "gvdi/gpu.hpp"
 #include <GLFW/glfw3.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
@@ -8,10 +9,10 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <cstddef>
 #include <format>
 #include <optional>
 #include <sstream>
-#include <unordered_map>
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
@@ -34,19 +35,70 @@ constexpr auto vk_api_v = VK_API_VERSION_1_2;
 	return VK_MAKE_VERSION(version.major, version.minor, version.patch);
 }
 
-struct Glfw {
+[[nodiscard]] constexpr auto to_gpu_type(vk::PhysicalDeviceType const in) -> gpu::Type {
+	switch (in) {
+	case vk::PhysicalDeviceType::eDiscreteGpu: return gpu::Type::Discrete;
+	case vk::PhysicalDeviceType::eIntegratedGpu: return gpu::Type::Integrated;
+	case vk::PhysicalDeviceType::eCpu: return gpu::Type::Cpu;
+	case vk::PhysicalDeviceType::eVirtualGpu: return gpu::Type::Virtual;
+	default: return gpu::Type::Other;
+	}
+}
+
+[[nodiscard]] auto get_viable_queue_family(vk::PhysicalDevice const& device, vk::SurfaceKHR const surface) -> std::optional<std::uint32_t> {
+	static constexpr auto queue_flags_v = vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eTransfer;
+	auto const family_properties = device.getQueueFamilyProperties();
+	for (std::uint32_t family = 0; family < std::uint32_t(family_properties.size()); ++family) {
+		if (device.getSurfaceSupportKHR(family, surface) == 0) { continue; }
+		if (!(family_properties[family].queueFlags & queue_flags_v)) { continue; }
+		return family;
+	}
+	return {};
+}
+
+constexpr auto get_image_extent(vk::SurfaceCapabilitiesKHR const& caps, vk::Extent2D const extent) noexcept -> vk::Extent2D {
+	constexpr auto limitless_v = std::numeric_limits<std::uint32_t>::max();
+	if (caps.currentExtent.width < limitless_v && caps.currentExtent.height < limitless_v) { return caps.currentExtent; }
+	auto const x = std::clamp(extent.width, caps.minImageExtent.width, caps.maxImageExtent.width);
+	auto const y = std::clamp(extent.height, caps.minImageExtent.height, caps.maxImageExtent.height);
+	return vk::Extent2D{x, y};
+}
+
+constexpr auto get_image_count(vk::SurfaceCapabilitiesKHR const& caps) noexcept -> std::uint32_t {
+	if (caps.maxImageCount < caps.minImageCount) { return std::max(3u, caps.minImageCount); }
+	return std::clamp(3u, caps.minImageCount, caps.maxImageCount);
+}
+
+constexpr auto is_linear(vk::Format const format) {
+	using enum vk::Format;
+	constexpr auto linear_formats_v =
+		std::array{eR8G8B8A8Unorm, eR8G8B8A8Snorm, eB8G8R8A8Unorm, eB8G8R8A8Snorm, eA8B8G8R8UnormPack32, eA8B8G8R8SnormPack32};
+	return std::ranges::find(linear_formats_v, format) != linear_formats_v.end();
+}
+
+constexpr auto select_format(std::span<vk::SurfaceFormatKHR const> available) -> vk::SurfaceFormatKHR {
+	for (auto const format : available) {
+		if (format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
+			if (is_linear(format.format)) { return format; }
+		}
+	}
+	return available.front();
+}
+
+auto get_framebuffer_extent(GLFWwindow* window) -> vk::Extent2D {
+	auto width = int{};
+	auto height = int{};
+	glfwGetFramebufferSize(window, &width, &height);
+	return vk::Extent2D{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)};
+}
+
+class Glfw {
+  public:
 	[[nodiscard]] static auto instance_extensions() -> std::vector<char const*> {
 		auto count = std::uint32_t{};
 		auto const* extensions_ptr = glfwGetRequiredInstanceExtensions(&count);
 		auto const extensions = std::span{extensions_ptr, count};
 		return {extensions.begin(), extensions.end()};
-	}
-
-	[[nodiscard]] static auto framebuffer_extent(GLFWwindow* window) -> vk::Extent2D {
-		auto width = int{};
-		auto height = int{};
-		glfwGetFramebufferSize(window, &width, &height);
-		return vk::Extent2D{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)};
 	}
 
 	Glfw(Glfw const&) = delete;
@@ -55,13 +107,14 @@ struct Glfw {
 	auto operator=(Glfw&&) = delete;
 
 	explicit Glfw() {
-		if (glfwInit() != GLFW_TRUE) { throw Error{"Failed to initialize GLFW"}; }
+		if (glfwInit() != GLFW_TRUE) { throw Exception{"App::stage_initialize(): Failed to initialize GLFW"}; }
 	}
 
 	~Glfw() { glfwTerminate(); }
 };
 
-struct DearImGui {
+class DearImGui {
+  public:
 	DearImGui(DearImGui const&) = delete;
 	DearImGui(DearImGui&&) = delete;
 	auto operator=(DearImGui const&) = delete;
@@ -98,7 +151,6 @@ struct DearImGui {
 	}
 
 	~DearImGui() {
-		m_device.waitIdle();
 		ImGui_ImplVulkan_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
 		ImGui::DestroyContext();
@@ -126,127 +178,8 @@ struct DearImGui {
 	State m_state{State::Ended};
 };
 
-class GpuList : public GpuSelector {
+class Surface {
   public:
-	struct Gpu {
-		vk::PhysicalDevice device{};
-		std::uint32_t queue_family{};
-		GpuInfo::Type type{};
-		std::string name{};
-	};
-
-	explicit GpuList(vk::Instance const instance, vk::SurfaceKHR const surface) {
-		populate(instance.enumeratePhysicalDevices(), surface);
-	}
-
-	[[nodiscard]] auto get_gpu() const -> Gpu const& {
-		auto const it = m_gpu_map.find(m_selected);
-		assert(it != m_gpu_map.end());
-		return it->second;
-	}
-
-  private:
-	enum struct GpuRank : std::int8_t {};
-
-	static constexpr auto get_rank(GpuInfo::Type const gpu_type) -> GpuRank {
-		switch (gpu_type) {
-		case GpuInfo::Type::Discrete: return GpuRank{-10};
-		case GpuInfo::Type::Integrated: return GpuRank{-100};
-		case GpuInfo::Type::Cpu: return GpuRank{5};
-		case GpuInfo::Type::Virtual: return GpuRank{-5};
-		default: return GpuRank{0};
-		}
-	}
-
-	[[nodiscard]] static constexpr auto to_gpu_type(vk::PhysicalDeviceType const in) -> GpuInfo::Type {
-		switch (in) {
-		case vk::PhysicalDeviceType::eDiscreteGpu: return GpuInfo::Type::Discrete;
-		case vk::PhysicalDeviceType::eIntegratedGpu: return GpuInfo::Type::Integrated;
-		case vk::PhysicalDeviceType::eCpu: return GpuInfo::Type::Cpu;
-		case vk::PhysicalDeviceType::eVirtualGpu: return GpuInfo::Type::Virtual;
-		default: return GpuInfo::Type::Other;
-		}
-	}
-
-	[[nodiscard]] static auto to_gpu(vk::SurfaceKHR surface, vk::PhysicalDevice const& device) -> std::optional<Gpu> {
-		static constexpr auto queue_flags_v = vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eTransfer;
-		auto const family_properties = device.getQueueFamilyProperties();
-		for (std::uint32_t family = 0; family < std::uint32_t(family_properties.size()); ++family) {
-			if (device.getSurfaceSupportKHR(family, surface) == 0) { continue; }
-			if (!(family_properties[family].queueFlags & queue_flags_v)) { continue; }
-			auto const device_properties = device.getProperties();
-			return Gpu{
-				.device = device,
-				.queue_family = family,
-				.type = to_gpu_type(device_properties.deviceType),
-				.name = device_properties.deviceName.data(),
-			};
-		}
-		return {};
-	}
-
-	[[nodiscard]] auto enumerate_handles() const -> std::span<GpuHandle const> final { return m_handles; }
-
-	[[nodiscard]] auto get_selected() const -> GpuHandle final { return m_selected; }
-
-	auto set_selected(GpuHandle const handle) -> bool final {
-		if (!m_gpu_map.contains(handle)) { return false; }
-		m_selected = handle;
-		return true;
-	}
-
-	[[nodiscard]] auto get_info(GpuHandle const handle) const -> std::optional<GpuInfo> final {
-		if (auto const it = m_gpu_map.find(handle); it != m_gpu_map.end()) {
-			return GpuInfo{.type = it->second.type, .name = it->second.name};
-		}
-		return {};
-	}
-
-	void populate(std::span<vk::PhysicalDevice const> devices, vk::SurfaceKHR const surface) {
-		m_gpu_map.clear();
-		m_handles.clear();
-
-		for (std::size_t index = 0; index < devices.size(); ++index) {
-			auto const& device = devices[index];
-			auto const properties = device.getProperties();
-			if (properties.apiVersion < vk_api_v) { continue; }
-
-			auto gpu = to_gpu(surface, device);
-			if (!gpu) { continue; }
-
-			auto const handle = GpuHandle(index);
-			m_gpu_map.insert_or_assign(handle, std::move(*gpu));
-			m_handles.push_back(handle);
-		}
-
-		if (m_gpu_map.empty()) { throw Error{"Failed to find viable Vulkan Physical Device (GPU)"}; }
-
-		m_selected = select_default();
-	}
-
-	[[nodiscard]] auto select_default() const -> GpuHandle {
-		struct Entry {
-			GpuRank rank{};
-			GpuHandle handle{};
-		};
-
-		auto entries = std::vector<Entry>{};
-		entries.reserve(m_gpu_map.size());
-		for (auto const& [handle, gpu] : m_gpu_map) {
-			entries.push_back(Entry{.rank = get_rank(gpu.type), .handle = handle});
-		}
-
-		std::ranges::sort(entries, [](Entry const& a, Entry const& b) { return a.rank < b.rank; });
-		assert(!entries.empty());
-		return entries.front().handle;
-	}
-
-	std::unordered_map<GpuHandle, Gpu> m_gpu_map{};
-	std::vector<GpuHandle> m_handles{};
-	GpuHandle m_selected{};
-};
-
-struct Surface {
 	explicit Surface(GLFWwindow* window) : window(window) {
 		create_instance();
 		create_surface();
@@ -255,7 +188,7 @@ struct Surface {
 	void create_instance() {
 		VULKAN_HPP_DEFAULT_DISPATCHER.init();
 		auto const api_version = vk::enumerateInstanceVersion();
-		if (api_version < vk_api_v) { throw Error{"Vulkan 1.2 not supported by loader"}; }
+		if (api_version < vk_api_v) { throw Exception{"App::stage_initialize(): Vulkan 1.2 not supported by loader"}; }
 
 		auto ici = vk::InstanceCreateInfo{};
 		auto const version = to_vk_version(build_version_v);
@@ -282,11 +215,9 @@ struct Surface {
 	void create_surface() {
 		VkSurfaceKHR raw_surface{};
 		auto const result = glfwCreateWindowSurface(*instance, window, nullptr, &raw_surface);
-		if (result != VK_SUCCESS || !raw_surface) { throw Error{"Failed to create Window Surface"}; }
+		if (result != VK_SUCCESS || !raw_surface) { throw Exception{"App::stage_initialize(): Failed to create Window Surface"}; }
 		surface = vk::UniqueSurfaceKHR{raw_surface, *instance};
 	}
-
-	[[nodiscard]] auto create_gpu_list() const -> GpuList { return GpuList{*instance, *surface}; }
 
 	[[nodiscard]] auto get_capabilities(vk::PhysicalDevice const device) const -> vk::SurfaceCapabilitiesKHR {
 		return device.getSurfaceCapabilitiesKHR(*surface);
@@ -297,29 +228,84 @@ struct Surface {
 	vk::UniqueSurfaceKHR surface{};
 };
 
-struct Vulkan {
-	Vulkan(Vulkan const&) = delete;
-	Vulkan(Vulkan&&) = delete;
-	auto operator=(Vulkan const&) = delete;
-	auto operator=(Vulkan&&) = delete;
+struct ViableDevice {
+	[[nodiscard]] static auto build(vk::Instance const instance, vk::SurfaceKHR const surface) -> std::vector<ViableDevice> {
+		auto ret = std::vector<ViableDevice>{};
+		for (auto const& device : instance.enumeratePhysicalDevices()) {
+			auto const properties = device.getProperties();
+			if (properties.apiVersion < vk_api_v) { continue; }
 
-	explicit Vulkan(Surface surface, GpuList::Gpu gpu) : m_surface(std::move(surface)), m_gpu(std::move(gpu)) {
+			auto const queue_family = get_viable_queue_family(device, surface);
+			if (!queue_family) { continue; }
+
+			auto viable = ViableDevice{.device = device, .properties = device.getProperties(), .family = *queue_family};
+			viable.type = to_gpu_type(viable.properties.deviceType);
+			ret.push_back(viable);
+		}
+		return ret;
+	}
+
+	vk::PhysicalDevice device{};
+	vk::PhysicalDeviceProperties properties{};
+	std::uint32_t family{};
+	gpu::Type type{};
+};
+
+struct PhysicalDevice {
+	[[nodiscard]] static auto select(std::span<gpu::Type const> desired, Surface const& surface) -> PhysicalDevice {
+		if (desired.empty()) { desired = App::gpu_priority_v; }
+
+		auto const viables = ViableDevice::build(*surface.instance, *surface.surface);
+		if (viables.empty()) { throw Exception{"App::stage_initialize(): Failed to find viable Vulkan Physical Device (GPU)"}; }
+
+		ViableDevice const* selected{};
+
+		for (auto const type : desired) {
+			auto const pred = [type](ViableDevice const& v) { return v.type == type; };
+			if (auto const it = std::ranges::find_if(viables, pred); it != viables.end()) {
+				selected = &*it;
+				break;
+			}
+		}
+
+		if (!selected) { selected = &viables.front(); }
+
+		return PhysicalDevice{
+			.device = selected->device,
+			.queue_family = selected->family,
+			.type = selected->type,
+			.name = selected->properties.deviceName.data(),
+		};
+	}
+
+	vk::PhysicalDevice device{};
+	std::uint32_t queue_family{};
+	gpu::Type type{};
+	std::string name{};
+};
+
+class Renderer {
+  public:
+	Renderer(Renderer const&) = delete;
+	Renderer(Renderer&&) = delete;
+	auto operator=(Renderer const&) = delete;
+	auto operator=(Renderer&&) = delete;
+
+	explicit Renderer(Surface surface, PhysicalDevice gpu) : m_surface(std::move(surface)), m_gpu(std::move(gpu)) {
 		create_device();
-		create_swapchain(Glfw::framebuffer_extent(m_surface.window));
+		create_swapchain();
 		create_render_pass();
 	}
 
-	~Vulkan() {
-		if (!m_device) { return; }
-		m_device->waitIdle();
-	}
+	~Renderer() { wait_idle(); }
 
 	void create_dear_imgui(std::optional<DearImGui>& out, GLFWwindow* window) {
 		out.emplace(window, *m_surface.instance, m_gpu.device, *m_device, m_gpu.queue_family, m_queue, *m_render_pass);
 	}
 
 	template <typename Func>
-	void execute_pass(vk::Extent2D const framebuffer, ImVec4 const& clear, Func render) {
+	void execute_pass(ImVec4 const& clear, Func render) {
+		auto const framebuffer = get_framebuffer_extent(m_surface.window);
 		if (!begin_pass(framebuffer, clear)) { return; }
 		render(m_command_buffer);
 		end_pass(framebuffer);
@@ -328,48 +314,20 @@ struct Vulkan {
 	void recreate_swapchain(vk::SurfaceCapabilitiesKHR const& caps, vk::Extent2D const image_extent) {
 		assert(image_extent.width > 0 && image_extent.height > 0);
 		m_swapchain.create_info.imageExtent = image_extent;
-		m_swapchain.create_info.minImageCount = Swapchain::image_count(caps);
+		m_swapchain.create_info.minImageCount = get_image_count(caps);
 		m_swapchain.recreate(*m_device);
 	}
 
-	[[nodiscard]] auto get_gpu_info() const -> GpuInfo { return GpuInfo{.type = m_gpu.type, .name = m_gpu.name}; }
+	[[nodiscard]] auto get_gpu_info() const -> gpu::Info { return gpu::Info{.type = m_gpu.type, .name = m_gpu.name}; }
+
+	void wait_idle() const {
+		if (!m_device) { return; }
+		m_device->waitIdle();
+	}
 
   private:
-	static constexpr auto is_linear(vk::Format const format) {
-		using enum vk::Format;
-		constexpr auto linear_formats_v = std::array{eR8G8B8A8Unorm, eR8G8B8A8Snorm,	   eB8G8R8A8Unorm,
-													 eB8G8R8A8Snorm, eA8B8G8R8UnormPack32, eA8B8G8R8SnormPack32};
-		return std::ranges::find(linear_formats_v, format) != linear_formats_v.end();
-	}
-
-	static constexpr auto select_format(std::span<vk::SurfaceFormatKHR const> available) -> vk::SurfaceFormatKHR {
-		for (auto const format : available) {
-			if (format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
-				if (is_linear(format.format)) { return format; }
-			}
-		}
-		return available.front();
-	}
-
 	struct Swapchain {
-		static constexpr auto image_extent(vk::SurfaceCapabilitiesKHR const& caps, vk::Extent2D const extent) noexcept
-			-> vk::Extent2D {
-			constexpr auto limitless_v = std::numeric_limits<std::uint32_t>::max();
-			if (caps.currentExtent.width < limitless_v && caps.currentExtent.height < limitless_v) {
-				return caps.currentExtent;
-			}
-			auto const x = std::clamp(extent.width, caps.minImageExtent.width, caps.maxImageExtent.width);
-			auto const y = std::clamp(extent.height, caps.minImageExtent.height, caps.maxImageExtent.height);
-			return vk::Extent2D{x, y};
-		}
-
-		static constexpr auto image_count(vk::SurfaceCapabilitiesKHR const& caps) noexcept -> std::uint32_t {
-			if (caps.maxImageCount < caps.minImageCount) { return std::max(3u, caps.minImageCount); }
-			return std::clamp(3u, caps.minImageCount, caps.maxImageCount);
-		}
-
-		void setup_create_info(vk::SurfaceKHR const surface, std::uint32_t const queue_family,
-							   vk::SurfaceFormatKHR const& format) {
+		void setup_create_info(vk::SurfaceKHR const surface, std::uint32_t const queue_family, vk::SurfaceFormatKHR const& format) {
 			create_info.setImageArrayLayers(1)
 				.setPresentMode(vk::PresentModeKHR::eFifo)
 				.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment)
@@ -416,12 +374,10 @@ struct Vulkan {
 
 		auto const available_extensions = m_gpu.device.enumerateDeviceExtensionProperties();
 		for (auto const* ext : required_extensions_v) {
-			auto const found = [ext](vk::ExtensionProperties const& props) {
-				return std::string_view{props.extensionName} == ext;
-			};
+			auto const found = [ext](vk::ExtensionProperties const& props) { return std::string_view{props.extensionName} == ext; };
 			if (std::ranges::find_if(available_extensions, found) == available_extensions.end()) {
-				throw Error{
-					std::format("Required extension '", ext, "' not supported by selected GPU '", m_gpu.name, "'")};
+				throw Exception{
+					std::format("App::stage_initialize(): Required extension '{}' not supported by selected GPU '{}'", ext, m_gpu.name)};
 			}
 		}
 
@@ -435,11 +391,12 @@ struct Vulkan {
 		VULKAN_HPP_DEFAULT_DISPATCHER.init(*m_device);
 	}
 
-	void create_swapchain(vk::Extent2D const extent) {
+	void create_swapchain() {
+		auto const framebuffer_extent = get_framebuffer_extent(m_surface.window);
 		auto const format = select_format(m_gpu.device.getSurfaceFormatsKHR(*m_surface.surface));
 		m_swapchain.setup_create_info(*m_surface.surface, m_gpu.queue_family, format);
 		auto const caps = m_surface.get_capabilities(m_gpu.device);
-		auto const image_extent = Swapchain::image_extent(caps, extent);
+		auto const image_extent = get_image_extent(caps, framebuffer_extent);
 		recreate_swapchain(caps, image_extent);
 	}
 
@@ -487,22 +444,21 @@ struct Vulkan {
 		static constexpr auto max_timeout_v = static_cast<std::uint64_t>(std::chrono::nanoseconds(2s).count());
 
 		auto result = m_device->waitForFences(*m_render_fence, vk::True, max_timeout_v);
-		if (result != vk::Result::eSuccess) { throw Error{"Failed to wait for Vulkan render Fence"}; }
+		if (result != vk::Result::eSuccess) { throw Exception{"Renderer::begin_pass(): Failed to wait for Vulkan render Fence"}; }
 		m_device->resetFences(*m_render_fence);
 
 		auto const caps = m_surface.get_capabilities(m_gpu.device);
-		auto const image_extent = Swapchain::image_extent(caps, framebuffer);
+		auto const image_extent = get_image_extent(caps, framebuffer);
 		if (image_extent != m_swapchain.create_info.imageExtent) { recreate_swapchain(caps, image_extent); }
 
 		auto image_index = std::uint32_t{};
-		result =
-			m_device->acquireNextImageKHR(*m_swapchain.swapchain, max_timeout_v, *m_draw_semaphore, {}, &image_index);
+		result = m_device->acquireNextImageKHR(*m_swapchain.swapchain, max_timeout_v, *m_draw_semaphore, {}, &image_index);
 		if (result == vk::Result::eErrorOutOfDateKHR) {
 			recreate_swapchain(caps, image_extent);
 			return false;
 		}
 		if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR) {
-			throw Error{"Failed to acquire Vulkan Swapchain Image"};
+			throw Exception{"Renderer::begin_pass(): Failed to acquire Vulkan Swapchain Image"};
 		}
 
 		m_image_index = image_index;
@@ -511,13 +467,9 @@ struct Vulkan {
 		auto render_area = vk::Rect2D{};
 		render_area.setExtent(m_swapchain.create_info.imageExtent);
 
-		auto const vk_clear_colour =
-			std::array<vk::ClearValue, 1>{vk::ClearColorValue{clear.x, clear.y, clear.z, clear.w}};
+		auto const vk_clear_colour = std::array<vk::ClearValue, 1>{vk::ClearColorValue{clear.x, clear.y, clear.z, clear.w}};
 		auto rpbi = vk::RenderPassBeginInfo{};
-		rpbi.setRenderPass(*m_render_pass)
-			.setFramebuffer(*m_framebuffer)
-			.setRenderArea(render_area)
-			.setClearValues(vk_clear_colour);
+		rpbi.setRenderPass(*m_render_pass).setFramebuffer(*m_framebuffer).setRenderArea(render_area).setClearValues(vk_clear_colour);
 
 		m_command_buffer.begin(vk::CommandBufferBeginInfo{vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 		m_command_buffer.beginRenderPass(rpbi, vk::SubpassContents::eInline);
@@ -539,20 +491,20 @@ struct Vulkan {
 			.setWaitDstStageMask(wdsm)
 			.setSignalSemaphores(present_semaphore);
 		auto result = m_queue.submit(1, &si, *m_render_fence);
-		if (result != vk::Result::eSuccess) { throw Error{"Failed to submit Vulkan render Command Buffer"}; }
+		if (result != vk::Result::eSuccess) { throw Exception{"Renderer::end_pass(): Failed to submit Vulkan render Command Buffer"}; }
 
 		auto pi = vk::PresentInfoKHR{};
 		pi.setSwapchains(*m_swapchain.swapchain).setImageIndices(image_index).setWaitSemaphores(present_semaphore);
 		result = m_queue.presentKHR(&pi);
 		if (result == vk::Result::eErrorOutOfDateKHR) {
 			auto const caps = m_surface.get_capabilities(m_gpu.device);
-			auto const image_extent = Swapchain::image_extent(caps, framebuffer);
+			auto const image_extent = get_image_extent(caps, framebuffer);
 			recreate_swapchain(caps, image_extent);
 		}
 	}
 
 	Surface m_surface;
-	GpuList::Gpu m_gpu{};
+	PhysicalDevice m_gpu{};
 	vk::UniqueDevice m_device{};
 	vk::Queue m_queue{};
 
@@ -572,29 +524,80 @@ class App::Impl {
   public:
 	explicit Impl(App& app) : m_app(app) {}
 
-	void run() {
-		init();
-		while (glfwWindowShouldClose(m_window.get()) == GLFW_FALSE) {
+	void run_event_loop() {
+		m_app.stage_initialize();
+
+		m_app.stage_create();
+		m_app.pre_event_loop();
+
+		m_app.pre_first_frame();
+		while (glfwWindowShouldClose(get_window()) == GLFW_FALSE) {
 			glfwPollEvents();
 			m_dear_imgui->begin_frame();
 			m_app.update();
 			m_dear_imgui->end_frame();
 			auto const render = [](vk::CommandBuffer const command_buffer) {
-				if (auto* draw_data = ImGui::GetDrawData()) {
-					ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer);
-				}
+				if (auto* draw_data = ImGui::GetDrawData()) { ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer); }
 			};
-			m_vulkan->execute_pass(Glfw::framebuffer_extent(m_window.get()), {}, render);
+			m_renderer->execute_pass({}, render);
+
+			if (m_reboot) {
+				m_app.stage_reboot();
+				m_reboot = false;
+			}
 		}
-		m_app.post_run();
-		deinit();
+
+		m_renderer->wait_idle();
+		m_app.stage_destroy();
+		m_app.post_event_loop();
 	}
+
+	[[nodiscard]] auto is_running() const -> bool { return m_window != nullptr; }
 
 	[[nodiscard]] auto get_window() const -> GLFWwindow* { return m_window.get(); }
 
-	[[nodiscard]] auto get_gpu_info() const -> GpuInfo {
-		if (!m_vulkan) { return {}; }
-		return m_vulkan->get_gpu_info();
+	[[nodiscard]] auto get_gpu_info() const -> gpu::Info {
+		if (!m_renderer) { return {}; }
+		return m_renderer->get_gpu_info();
+	}
+
+	[[nodiscard]] auto will_reboot() const -> bool { return m_reboot; }
+
+	void schedule_reboot() {
+		if (!m_glfw) { throw Exception{"App::schedule_reboot(): stage_initialize() not called"}; }
+		if (m_reboot || m_app.should_close_window()) { return; }
+		m_reboot = true;
+	}
+
+	void stage_initialize() {
+		if (m_glfw) { throw Exception{"App::stage_initialize(): already initialized"}; }
+		m_glfw.emplace();
+		if (glfwVulkanSupported() != GLFW_TRUE) { throw Exception{"App::stage_initialize(): GLFW: Vukan not supported"}; }
+	}
+
+	void stage_create() {
+		if (!m_glfw) { throw Exception{"App::stage_create(): stage_initialize() not called"}; }
+		if (m_window) { throw Exception{"App::stage_create(): already created"}; }
+		create_window();
+		create_renderer();
+		m_renderer->create_dear_imgui(m_dear_imgui, get_window());
+	}
+
+	void stage_destroy() {
+		if (!m_glfw) { throw Exception{"App::stage_destroy(): stage_initialize() not called"}; }
+		if (!m_renderer) { return; }
+		m_renderer->wait_idle();
+		m_dear_imgui.reset();
+		m_renderer.reset();
+		m_window.reset();
+	}
+
+	void create_window() {
+		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+		m_window.reset(m_app.create_glfw_window());
+		if (!m_window) { throw Exception{"App::stage_initialize(): Failed to create GLFW Window"}; }
+		glfwSetWindowUserPointer(get_window(), this);
+		install_glfw_callbacks();
 	}
 
   private:
@@ -602,62 +605,102 @@ class App::Impl {
 		void operator()(GLFWwindow* ptr) const noexcept { glfwDestroyWindow(ptr); }
 	};
 
-	void init() {
-		m_app.pre_init();
-		create_window();
-		create_vulkan();
-		m_vulkan->create_dear_imgui(m_dear_imgui, m_window.get());
-		m_app.post_init();
+	void install_glfw_callbacks() const {
+		static auto const self = [](GLFWwindow* window) -> Impl& { return *static_cast<Impl*>(glfwGetWindowUserPointer(window)); };
+		auto* window = get_window();
+
+		glfwSetWindowPosCallback(window, [](GLFWwindow* w, int x, int y) { self(w).m_app.on_window_reposition(x, y); });
+		glfwSetWindowSizeCallback(window, [](GLFWwindow* w, int x, int y) { self(w).m_app.on_window_resize(x, y); });
+		glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, int x, int y) { self(w).m_app.on_framebuffer_resize(x, y); });
+		glfwSetWindowCloseCallback(window, [](GLFWwindow* w) { self(w).m_app.on_window_close(); });
+		glfwSetWindowFocusCallback(window, [](GLFWwindow* w, int b) { self(w).m_app.on_window_focus(b == GLFW_TRUE); });
+		glfwSetWindowIconifyCallback(window, [](GLFWwindow* w, int b) { self(w).m_app.on_window_iconify(b == GLFW_TRUE); });
+		glfwSetWindowMaximizeCallback(window, [](GLFWwindow* w, int b) { self(w).m_app.on_window_maximize(b == GLFW_TRUE); });
+
+		glfwSetKeyCallback(window, [](GLFWwindow* w, int k, int s, int a, int m) { self(w).on_key(k, s, a, m); });
+		glfwSetCharCallback(window, [](GLFWwindow* w, unsigned int codepoint) { self(w).m_app.on_character(codepoint); });
+
+		glfwSetCursorPosCallback(window, [](GLFWwindow* w, double x, double y) { self(w).m_app.on_cursor_reposition(x, y); });
+		glfwSetCursorEnterCallback(window, [](GLFWwindow* w, int b) { self(w).m_app.on_cursor_enter(b == GLFW_TRUE); });
+		glfwSetMouseButtonCallback(window, [](GLFWwindow* w, int b, int a, int m) { self(w).on_mouse_button(b, a, m); });
+		glfwSetScrollCallback(window, [](GLFWwindow* w, double x, double y) { self(w).m_app.on_mouse_scroll(x, y); });
+
+		glfwSetDropCallback(window, [](GLFWwindow* w, int c, char const** p) { self(w).m_app.on_path_drop({p, std::size_t(c)}); });
 	}
 
-	void deinit() {
-		m_dear_imgui.reset();
-		m_vulkan.reset();
-		m_window.reset();
-		m_glfw.reset();
+	void create_renderer() {
+		auto surface = Surface{get_window()};
+		auto gpu = PhysicalDevice::select(m_app.get_gpu_type_priority(), surface);
+		m_renderer.emplace(std::move(surface), std::move(gpu));
 	}
 
-	void create_window() {
-		m_glfw.emplace();
-		if (glfwVulkanSupported() != GLFW_TRUE) { throw Error{"GLFW: Vukan not supported"}; }
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		m_window.reset(m_app.create_window());
-		if (!m_window) { throw Error{"Failed to create Window"}; }
+	void on_key(int const key, int const scancode, int const action, int const mods) {
+		switch (action) {
+		case GLFW_PRESS: m_app.on_key_press(key, scancode, mods); break;
+		case GLFW_RELEASE: m_app.on_key_release(key, scancode, mods); break;
+		case GLFW_REPEAT: m_app.on_key_repeat(key, scancode, mods); break;
+		default: break;
+		}
 	}
 
-	void create_vulkan() {
-		auto surface = Surface{m_window.get()};
-		auto gpu_list = surface.create_gpu_list();
-		m_app.select_gpu(gpu_list);
-		m_vulkan.emplace(std::move(surface), gpu_list.get_gpu());
+	void on_mouse_button(int const button, int const action, int const mods) {
+		switch (action) {
+		case GLFW_PRESS: m_app.on_mouse_button_press(button, mods); break;
+		case GLFW_RELEASE: m_app.on_mouse_button_release(button, mods); break;
+		default: break;
+		}
 	}
 
 	App& m_app;
 
 	std::optional<Glfw> m_glfw{};
 	std::unique_ptr<GLFWwindow, Deleter> m_window{};
-	std::optional<Vulkan> m_vulkan{};
+	std::optional<Renderer> m_renderer{};
 	std::optional<DearImGui> m_dear_imgui{};
+
+	bool m_reboot{};
 };
 
 void App::Deleter::operator()(Impl* ptr) const noexcept { std::default_delete<Impl>{}(ptr); }
 
 App::App() : m_impl(new Impl{*this}) {}
 
-void App::run() noexcept(false) {
-	if (!m_impl) { return; }
-	m_impl->run();
+auto App::create_windowed_window(char const* title, int const width, int const height) -> GLFWwindow* {
+	return glfwCreateWindow(width, height, title, nullptr, nullptr);
 }
 
-auto App::get_window() const -> GLFWwindow* {
-	if (!m_impl) { return nullptr; }
-	return m_impl->get_window();
+auto App::create_fullscreen_window(char const* title) -> GLFWwindow* {
+	auto* monitor = glfwGetPrimaryMonitor();
+	auto const* video_mode = glfwGetVideoMode(monitor);
+	glfwWindowHint(GLFW_RED_BITS, video_mode->redBits);
+	glfwWindowHint(GLFW_GREEN_BITS, video_mode->greenBits);
+	glfwWindowHint(GLFW_BLUE_BITS, video_mode->blueBits);
+	glfwWindowHint(GLFW_REFRESH_RATE, video_mode->refreshRate);
+	return glfwCreateWindow(video_mode->width, video_mode->height, title, monitor, nullptr);
 }
 
-auto App::get_gpu_info() const -> GpuInfo {
-	if (!m_impl) { return {}; }
-	return m_impl->get_gpu_info();
+void App::run_event_loop() noexcept(false) { m_impl->run_event_loop(); }
+
+void App::stage_initialize() { m_impl->stage_initialize(); }
+
+void App::stage_create() { m_impl->stage_create(); }
+
+void App::stage_reboot() {
+	if (!m_impl->is_running()) { throw Exception{"App::stage_reboot(): not running"}; }
+	stage_destroy();
+	stage_create();
+	pre_first_frame();
 }
 
-auto App::create_window() -> GLFWwindow* { return glfwCreateWindow(800, 600, "gvdi App", nullptr, nullptr); }
+void App::stage_destroy() { m_impl->stage_destroy(); }
+
+auto App::is_running() const -> bool { return m_impl->is_running(); }
+
+auto App::get_window() const -> GLFWwindow* { return m_impl->get_window(); }
+
+auto App::get_gpu_info() const -> gpu::Info { return m_impl->get_gpu_info(); }
+
+auto App::will_reboot() const -> bool { return m_impl->will_reboot(); }
+
+void App::schedule_reboot() { m_impl->schedule_reboot(); }
 } // namespace gvdi

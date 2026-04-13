@@ -17,7 +17,7 @@ class App : public gvdi::App {
 auto main() -> int {
 	try {
 		auto app = App{};
-		app.run();
+		app.run_event_loop();
 	} catch (std::exception const& e) {
 		std::cout << std::format("PANIC: {}\n", e.what());
 		return EXIT_FAILURE;

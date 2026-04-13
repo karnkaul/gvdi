@@ -4,12 +4,12 @@ jobs:
   format-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: init
         run: |
-            sudo apt update -yqq && sudo apt install -yqq clang-format-19
+            sudo apt update -yqq && sudo apt install -yqq clang-format-20
             sudo update-alternatives --remove-all clang-format
-            sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-19 10
+            sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-20 10
             clang-format --version
       - name: format code
         run: scripts/format_code.sh
@@ -18,7 +18,7 @@ jobs:
   x64-linux-gcc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: init
         run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
       - name: configure
@@ -34,7 +34,7 @@ jobs:
   x64-linux-clang:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: init
         run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
       - name: configure
@@ -50,7 +50,7 @@ jobs:
   arm64-linux-gcc:
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: init
         run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
       - name: configure
@@ -66,7 +66,7 @@ jobs:
   arm64-linux-clang:
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: init
         run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
       - name: configure
@@ -82,7 +82,7 @@ jobs:
   x64-windows-vs22:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: configure
         run: cmake -S . --preset=vs22 -B build
       - name: build debug
@@ -96,7 +96,7 @@ jobs:
   x64-windows-clang:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: configure
         run: cmake -S . --preset=ninja-clang -B clang
       - name: build debug
@@ -110,7 +110,7 @@ jobs:
   x64-mingw-gcc:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: configure
         run: cmake -S . --preset=ninja-gcc -B build
       - name: build debug
