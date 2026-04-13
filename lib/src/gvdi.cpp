@@ -6,7 +6,6 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_handles.hpp>
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -57,19 +56,49 @@ constexpr auto vk_api_v = VK_API_VERSION_1_2;
 	return {};
 }
 
-struct Glfw {
+constexpr auto get_image_extent(vk::SurfaceCapabilitiesKHR const& caps, vk::Extent2D const extent) noexcept -> vk::Extent2D {
+	constexpr auto limitless_v = std::numeric_limits<std::uint32_t>::max();
+	if (caps.currentExtent.width < limitless_v && caps.currentExtent.height < limitless_v) { return caps.currentExtent; }
+	auto const x = std::clamp(extent.width, caps.minImageExtent.width, caps.maxImageExtent.width);
+	auto const y = std::clamp(extent.height, caps.minImageExtent.height, caps.maxImageExtent.height);
+	return vk::Extent2D{x, y};
+}
+
+constexpr auto get_image_count(vk::SurfaceCapabilitiesKHR const& caps) noexcept -> std::uint32_t {
+	if (caps.maxImageCount < caps.minImageCount) { return std::max(3u, caps.minImageCount); }
+	return std::clamp(3u, caps.minImageCount, caps.maxImageCount);
+}
+
+constexpr auto is_linear(vk::Format const format) {
+	using enum vk::Format;
+	constexpr auto linear_formats_v =
+		std::array{eR8G8B8A8Unorm, eR8G8B8A8Snorm, eB8G8R8A8Unorm, eB8G8R8A8Snorm, eA8B8G8R8UnormPack32, eA8B8G8R8SnormPack32};
+	return std::ranges::find(linear_formats_v, format) != linear_formats_v.end();
+}
+
+constexpr auto select_format(std::span<vk::SurfaceFormatKHR const> available) -> vk::SurfaceFormatKHR {
+	for (auto const format : available) {
+		if (format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
+			if (is_linear(format.format)) { return format; }
+		}
+	}
+	return available.front();
+}
+
+auto get_framebuffer_extent(GLFWwindow* window) -> vk::Extent2D {
+	auto width = int{};
+	auto height = int{};
+	glfwGetFramebufferSize(window, &width, &height);
+	return vk::Extent2D{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)};
+}
+
+class Glfw {
+  public:
 	[[nodiscard]] static auto instance_extensions() -> std::vector<char const*> {
 		auto count = std::uint32_t{};
 		auto const* extensions_ptr = glfwGetRequiredInstanceExtensions(&count);
 		auto const extensions = std::span{extensions_ptr, count};
 		return {extensions.begin(), extensions.end()};
-	}
-
-	[[nodiscard]] static auto framebuffer_extent(GLFWwindow* window) -> vk::Extent2D {
-		auto width = int{};
-		auto height = int{};
-		glfwGetFramebufferSize(window, &width, &height);
-		return vk::Extent2D{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)};
 	}
 
 	Glfw(Glfw const&) = delete;
@@ -84,7 +113,8 @@ struct Glfw {
 	~Glfw() { glfwTerminate(); }
 };
 
-struct DearImGui {
+class DearImGui {
+  public:
 	DearImGui(DearImGui const&) = delete;
 	DearImGui(DearImGui&&) = delete;
 	auto operator=(DearImGui const&) = delete;
@@ -148,7 +178,8 @@ struct DearImGui {
 	State m_state{State::Ended};
 };
 
-struct Surface {
+class Surface {
+  public:
 	explicit Surface(GLFWwindow* window) : window(window) {
 		create_instance();
 		create_surface();
@@ -253,26 +284,28 @@ struct PhysicalDevice {
 	std::string name{};
 };
 
-struct Vulkan {
-	Vulkan(Vulkan const&) = delete;
-	Vulkan(Vulkan&&) = delete;
-	auto operator=(Vulkan const&) = delete;
-	auto operator=(Vulkan&&) = delete;
+class Renderer {
+  public:
+	Renderer(Renderer const&) = delete;
+	Renderer(Renderer&&) = delete;
+	auto operator=(Renderer const&) = delete;
+	auto operator=(Renderer&&) = delete;
 
-	explicit Vulkan(Surface surface, PhysicalDevice gpu) : m_surface(std::move(surface)), m_gpu(std::move(gpu)) {
+	explicit Renderer(Surface surface, PhysicalDevice gpu) : m_surface(std::move(surface)), m_gpu(std::move(gpu)) {
 		create_device();
-		create_swapchain(Glfw::framebuffer_extent(m_surface.window));
+		create_swapchain();
 		create_render_pass();
 	}
 
-	~Vulkan() { wait_idle(); }
+	~Renderer() { wait_idle(); }
 
 	void create_dear_imgui(std::optional<DearImGui>& out, GLFWwindow* window) {
 		out.emplace(window, *m_surface.instance, m_gpu.device, *m_device, m_gpu.queue_family, m_queue, *m_render_pass);
 	}
 
 	template <typename Func>
-	void execute_pass(vk::Extent2D const framebuffer, ImVec4 const& clear, Func render) {
+	void execute_pass(ImVec4 const& clear, Func render) {
+		auto const framebuffer = get_framebuffer_extent(m_surface.window);
 		if (!begin_pass(framebuffer, clear)) { return; }
 		render(m_command_buffer);
 		end_pass(framebuffer);
@@ -281,7 +314,7 @@ struct Vulkan {
 	void recreate_swapchain(vk::SurfaceCapabilitiesKHR const& caps, vk::Extent2D const image_extent) {
 		assert(image_extent.width > 0 && image_extent.height > 0);
 		m_swapchain.create_info.imageExtent = image_extent;
-		m_swapchain.create_info.minImageCount = Swapchain::image_count(caps);
+		m_swapchain.create_info.minImageCount = get_image_count(caps);
 		m_swapchain.recreate(*m_device);
 	}
 
@@ -293,36 +326,7 @@ struct Vulkan {
 	}
 
   private:
-	static constexpr auto is_linear(vk::Format const format) {
-		using enum vk::Format;
-		constexpr auto linear_formats_v =
-			std::array{eR8G8B8A8Unorm, eR8G8B8A8Snorm, eB8G8R8A8Unorm, eB8G8R8A8Snorm, eA8B8G8R8UnormPack32, eA8B8G8R8SnormPack32};
-		return std::ranges::find(linear_formats_v, format) != linear_formats_v.end();
-	}
-
-	static constexpr auto select_format(std::span<vk::SurfaceFormatKHR const> available) -> vk::SurfaceFormatKHR {
-		for (auto const format : available) {
-			if (format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
-				if (is_linear(format.format)) { return format; }
-			}
-		}
-		return available.front();
-	}
-
 	struct Swapchain {
-		static constexpr auto image_extent(vk::SurfaceCapabilitiesKHR const& caps, vk::Extent2D const extent) noexcept -> vk::Extent2D {
-			constexpr auto limitless_v = std::numeric_limits<std::uint32_t>::max();
-			if (caps.currentExtent.width < limitless_v && caps.currentExtent.height < limitless_v) { return caps.currentExtent; }
-			auto const x = std::clamp(extent.width, caps.minImageExtent.width, caps.maxImageExtent.width);
-			auto const y = std::clamp(extent.height, caps.minImageExtent.height, caps.maxImageExtent.height);
-			return vk::Extent2D{x, y};
-		}
-
-		static constexpr auto image_count(vk::SurfaceCapabilitiesKHR const& caps) noexcept -> std::uint32_t {
-			if (caps.maxImageCount < caps.minImageCount) { return std::max(3u, caps.minImageCount); }
-			return std::clamp(3u, caps.minImageCount, caps.maxImageCount);
-		}
-
 		void setup_create_info(vk::SurfaceKHR const surface, std::uint32_t const queue_family, vk::SurfaceFormatKHR const& format) {
 			create_info.setImageArrayLayers(1)
 				.setPresentMode(vk::PresentModeKHR::eFifo)
@@ -386,11 +390,12 @@ struct Vulkan {
 		VULKAN_HPP_DEFAULT_DISPATCHER.init(*m_device);
 	}
 
-	void create_swapchain(vk::Extent2D const extent) {
+	void create_swapchain() {
+		auto const framebuffer_extent = get_framebuffer_extent(m_surface.window);
 		auto const format = select_format(m_gpu.device.getSurfaceFormatsKHR(*m_surface.surface));
 		m_swapchain.setup_create_info(*m_surface.surface, m_gpu.queue_family, format);
 		auto const caps = m_surface.get_capabilities(m_gpu.device);
-		auto const image_extent = Swapchain::image_extent(caps, extent);
+		auto const image_extent = get_image_extent(caps, framebuffer_extent);
 		recreate_swapchain(caps, image_extent);
 	}
 
@@ -442,7 +447,7 @@ struct Vulkan {
 		m_device->resetFences(*m_render_fence);
 
 		auto const caps = m_surface.get_capabilities(m_gpu.device);
-		auto const image_extent = Swapchain::image_extent(caps, framebuffer);
+		auto const image_extent = get_image_extent(caps, framebuffer);
 		if (image_extent != m_swapchain.create_info.imageExtent) { recreate_swapchain(caps, image_extent); }
 
 		auto image_index = std::uint32_t{};
@@ -492,7 +497,7 @@ struct Vulkan {
 		result = m_queue.presentKHR(&pi);
 		if (result == vk::Result::eErrorOutOfDateKHR) {
 			auto const caps = m_surface.get_capabilities(m_gpu.device);
-			auto const image_extent = Swapchain::image_extent(caps, framebuffer);
+			auto const image_extent = get_image_extent(caps, framebuffer);
 			recreate_swapchain(caps, image_extent);
 		}
 	}
@@ -533,7 +538,7 @@ class App::Impl {
 			auto const render = [](vk::CommandBuffer const command_buffer) {
 				if (auto* draw_data = ImGui::GetDrawData()) { ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer); }
 			};
-			m_vulkan->execute_pass(Glfw::framebuffer_extent(get_window()), {}, render);
+			m_renderer->execute_pass({}, render);
 
 			if (m_reboot) {
 				m_app.stage_reboot();
@@ -541,7 +546,7 @@ class App::Impl {
 			}
 		}
 
-		m_vulkan->wait_idle();
+		m_renderer->wait_idle();
 		m_app.stage_destroy();
 		m_app.post_event_loop();
 	}
@@ -551,8 +556,8 @@ class App::Impl {
 	[[nodiscard]] auto get_window() const -> GLFWwindow* { return m_window.get(); }
 
 	[[nodiscard]] auto get_gpu_info() const -> gpu::Info {
-		if (!m_vulkan) { return {}; }
-		return m_vulkan->get_gpu_info();
+		if (!m_renderer) { return {}; }
+		return m_renderer->get_gpu_info();
 	}
 
 	[[nodiscard]] auto will_reboot() const -> bool { return m_reboot; }
@@ -569,15 +574,15 @@ class App::Impl {
 
 	void stage_create() {
 		create_window();
-		create_vulkan();
-		m_vulkan->create_dear_imgui(m_dear_imgui, get_window());
+		create_renderer();
+		m_renderer->create_dear_imgui(m_dear_imgui, get_window());
 	}
 
 	void stage_destroy() {
-		if (!m_vulkan) { return; }
-		m_vulkan->wait_idle();
+		if (!m_renderer) { return; }
+		m_renderer->wait_idle();
 		m_dear_imgui.reset();
-		m_vulkan.reset();
+		m_renderer.reset();
 		m_window.reset();
 	}
 
@@ -617,10 +622,10 @@ class App::Impl {
 		glfwSetDropCallback(window, [](GLFWwindow* w, int c, char const** p) { self(w).m_app.on_path_drop({p, std::size_t(c)}); });
 	}
 
-	void create_vulkan() {
+	void create_renderer() {
 		auto surface = Surface{get_window()};
 		auto gpu = PhysicalDevice::select(m_app.get_gpu_type_priority(), surface);
-		m_vulkan.emplace(std::move(surface), std::move(gpu));
+		m_renderer.emplace(std::move(surface), std::move(gpu));
 	}
 
 	void on_key(int const key, int const scancode, int const action, int const mods) {
@@ -644,7 +649,7 @@ class App::Impl {
 
 	std::optional<Glfw> m_glfw{};
 	std::unique_ptr<GLFWwindow, Deleter> m_window{};
-	std::optional<Vulkan> m_vulkan{};
+	std::optional<Renderer> m_renderer{};
 	std::optional<DearImGui> m_dear_imgui{};
 
 	bool m_reboot{};

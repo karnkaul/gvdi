@@ -31,7 +31,7 @@ class App : public EventListener {
 	/// GLFW remains initialized until App is destroyed.
 	///
 	/// Note: reruns can sometimes cause issues if libdecor is enabled on Wayland,
-	/// prefer using enqueue_recreate() when feasible.
+	/// prefer using schedule_reboot() when feasible.
 	void run_event_loop() noexcept(false);
 
 	[[nodiscard]] auto should_close_window() const -> bool { return glfwWindowShouldClose(get_window()); }
