@@ -37,7 +37,7 @@ Create an instance and call `App::run()`.
 
 ```cpp
 auto app = App{};
-app.run();
+app.run_event_loop();
 ```
 
 ## Misc
