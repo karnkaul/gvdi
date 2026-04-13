@@ -122,9 +122,9 @@ class App : public gvdi::App {
 		if ((mods & GLFW_MOD_CONTROL) == GLFW_MOD_CONTROL) {
 			switch (key) {
 			// close on Ctrl + W.
-			case GLFW_KEY_W: glfwSetWindowShouldClose(get_window(), GLFW_TRUE); break;
-			// recreate on Ctrl + R.
-			case GLFW_KEY_R: enqueue_recreate(); break;
+			case GLFW_KEY_W: set_should_close_window(true); break;
+			// reboot on Ctrl + R.
+			case GLFW_KEY_R: schedule_reboot(); break;
 			}
 		}
 	}

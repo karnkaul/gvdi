@@ -34,10 +34,11 @@ class App : public EventListener {
 	/// prefer using enqueue_recreate() when feasible.
 	void run_event_loop() noexcept(false);
 
-	/// \returns true if resource recreation is enqueued.
-	[[nodiscard]] auto is_recreate_enqueued() const -> bool;
-	/// \brief Enqueue recreation of all resources (and Stage callbacks) at the end of this frame.
-	void enqueue_recreate();
+	[[nodiscard]] auto should_close_window() const -> bool { return glfwWindowShouldClose(get_window()); }
+	void set_should_close_window(bool const value) { glfwSetWindowShouldClose(get_window(), value); }
+
+	[[nodiscard]] auto will_reboot() const -> bool;
+	void schedule_reboot();
 
   protected:
 	[[nodiscard]] static auto create_windowed_window(char const* title, int width = 800, int height = 600) -> GLFWwindow*;
@@ -69,7 +70,7 @@ class App : public EventListener {
 	/// \brief Destroy and recreate window and associated resources.
 	/// Only called if enqueue_recreate() was called earlier in the frame.
 	/// Calls stage_destroy(), stage_create(), and pre_first_frame() in turn.
-	virtual void stage_recreate();
+	virtual void stage_reboot();
 	/// \brief Destroy window and associated resources.
 	virtual void stage_destroy();
 

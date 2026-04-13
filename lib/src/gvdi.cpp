@@ -535,9 +535,9 @@ class App::Impl {
 			};
 			m_vulkan->execute_pass(Glfw::framebuffer_extent(get_window()), {}, render);
 
-			if (m_recreate) {
-				m_app.stage_recreate();
-				m_recreate = false;
+			if (m_reboot) {
+				m_app.stage_reboot();
+				m_reboot = false;
 			}
 		}
 
@@ -555,12 +555,11 @@ class App::Impl {
 		return m_vulkan->get_gpu_info();
 	}
 
-	[[nodiscard]] auto is_recreate_enqueued() const -> bool { return m_recreate; }
+	[[nodiscard]] auto will_reboot() const -> bool { return m_reboot; }
 
-	void enqueue_recreate() {
-		if (m_recreate || !is_running() || glfwWindowShouldClose(get_window())) { return; }
-		m_recreate = true;
-		glfwSetWindowShouldClose(get_window(), GLFW_TRUE);
+	void schedule_reboot() {
+		if (m_reboot || !is_running() || m_app.should_close_window()) { return; }
+		m_reboot = true;
 	}
 
 	void stage_initialize() {
@@ -648,7 +647,7 @@ class App::Impl {
 	std::optional<Vulkan> m_vulkan{};
 	std::optional<DearImGui> m_dear_imgui{};
 
-	bool m_recreate{};
+	bool m_reboot{};
 };
 
 void App::Deleter::operator()(Impl* ptr) const noexcept { std::default_delete<Impl>{}(ptr); }
@@ -675,7 +674,7 @@ void App::stage_initialize() { m_impl->stage_initialize(); }
 
 void App::stage_create() { m_impl->stage_create(); }
 
-void App::stage_recreate() {
+void App::stage_reboot() {
 	stage_destroy();
 	stage_create();
 	pre_first_frame();
@@ -689,7 +688,7 @@ auto App::get_window() const -> GLFWwindow* { return m_impl->get_window(); }
 
 auto App::get_gpu_info() const -> gpu::Info { return m_impl->get_gpu_info(); }
 
-auto App::is_recreate_enqueued() const -> bool { return m_impl->is_recreate_enqueued(); }
+auto App::will_reboot() const -> bool { return m_impl->will_reboot(); }
 
-void App::enqueue_recreate() { m_impl->enqueue_recreate(); }
+void App::schedule_reboot() { m_impl->schedule_reboot(); }
 } // namespace gvdi
