@@ -1,11 +1,18 @@
 #pragma once
-#include "gvdi/polymorphic.hpp"
 #include <cstdint>
 #include <span>
 
 namespace gvdi {
-class EventListener : public Polymorphic {
+class EventListener {
   public:
+	virtual ~EventListener() = default;
+
+	EventListener() = default;
+	EventListener(EventListener const&) = delete;
+	EventListener(EventListener&&) = delete;
+	EventListener& operator=(EventListener const&) = delete;
+	EventListener& operator=(EventListener&&) = delete;
+
 	virtual void on_window_reposition([[maybe_unused]] int x, [[maybe_unused]] int y) {}
 	virtual void on_window_resize([[maybe_unused]] int x, [[maybe_unused]] int y) {}
 	virtual void on_framebuffer_resize([[maybe_unused]] int x, [[maybe_unused]] int y) {}

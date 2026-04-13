@@ -13,7 +13,6 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
   include/gvdi/event_listener.hpp
   include/gvdi/exception.hpp
   include/gvdi/gpu.hpp
-  include/gvdi/polymorphic.hpp
 )
 
 target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS
