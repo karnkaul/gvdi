@@ -1,0 +1,24 @@
+{
+  "packages": [
+    {
+      "uri": "karnkaul/dyvk"
+    },
+    {
+      "uri": "glfw/glfw",
+      "remove_subpaths": [
+        "docs",
+        "tests",
+        "examples"
+      ],
+      "custom_command": "cmake -P src/glfw/CMake/GenerateMappings.cmake src/glfw/src/mappings.h.in src/glfw/src/mappings.h"
+    },
+    {
+      "uri": "ocornut/imgui",
+      "branch": "v1.92.8",
+      "subdir": "dear_imgui",
+      "remove_subpaths": [
+        "examples"
+      ]
+    }
+  ]
+}

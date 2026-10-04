@@ -14,9 +14,6 @@
 #include <optional>
 #include <sstream>
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
-
 namespace gvdi {
 namespace {
 using namespace std::chrono_literals;
@@ -134,20 +131,20 @@ class DearImGui {
 		ImGui_ImplVulkan_LoadFunctions(vk_api_v, load_vk_func, &instance);
 
 		ImGui_ImplGlfw_InitForVulkan(window, true);
-		ImGui_ImplVulkan_InitInfo init_info = {};
+		auto init_info = ImGui_ImplVulkan_InitInfo{};
+		init_info.ApiVersion = vk_api_v;
 		init_info.Instance = instance;
 		init_info.PhysicalDevice = physical_device;
 		init_info.Device = device;
 		init_info.QueueFamily = queue_family;
 		init_info.Queue = queue;
-		init_info.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
-		init_info.Subpass = 0;
 		init_info.MinImageCount = 2;
 		init_info.ImageCount = 2;
-		init_info.MSAASamples = static_cast<VkSampleCountFlagBits>(1);
-		init_info.RenderPass = render_pass;
+		init_info.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE + IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE;
+		init_info.PipelineInfoMain.MSAASamples = static_cast<VkSampleCountFlagBits>(vk::SampleCountFlagBits::e1);
+		init_info.PipelineInfoMain.RenderPass = render_pass;
 
-		ImGui_ImplVulkan_Init(&init_info);
+		if (!ImGui_ImplVulkan_Init(&init_info)) { throw std::runtime_error{"Failed to initialize Dear ImGui"}; }
 	}
 
 	~DearImGui() {

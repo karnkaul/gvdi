@@ -6,11 +6,11 @@ indent_style = tab
 # Optional: git will commit as lf, this will only affect local files
 end_of_line = lf
 
-[*.{py,md,yml,sh,cmake,json}]
+[*.{py,md,yml,sh,cmake,json,jsonc}]
 indent_style = space
 indent_size = 2
 
-[*.{py,md,yml,sh,cmake,json}.in]
+[*.{py,md,yml,sh,cmake,json,jsonc}.in]
 indent_style = space
 indent_size = 2
 
