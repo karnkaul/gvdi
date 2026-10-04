@@ -2,121 +2,50 @@ name: ci-pr
 on: [pull_request, workflow_dispatch]
 jobs:
   format-check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v6
       - name: init
-        run: |
-            sudo apt update -yqq && sudo apt install -yqq clang-format-20
-            sudo update-alternatives --remove-all clang-format
-            sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-20 10
-            clang-format --version
+        run: .github/init_ubuntu_26.04.sh --skip-install
       - name: format code
         run: scripts/format_code.sh
       - name: check diff
         run: .github/format_check_diff.sh
-  x64-linux-gcc:
-    runs-on: ubuntu-latest
+  build-and-test:
+    continue-on-error: true
+    strategy:
+      matrix:
+        platform: [x64-linux, arm64-linux, x64-windows]
+        preset: [ninja-gcc, ninja-clang, vs26]
+        exclude:
+          - platform: x64-linux
+            preset: vs26
+          - platform: arm64-linux
+            preset: vs26
+        include:
+          - platform: x64-linux
+            os: ubuntu-26.04
+          - platform: arm64-linux
+            os: ubuntu-26.04-arm
+          - platform: x64-windows
+            os: windows-latest
+          - preset: vs26
+            build_args: --parallel
+          - preset: ninja-gcc
+            build_args: -- -v
+          - preset: ninja-clang
+            build_args: -- -v
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - name: init
-        run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
+        run: cmake -P .github/init.cmake
       - name: configure
-        run: cmake -S . --preset=ninja-gcc -B build -DGLFW_BUILD_X11=OFF -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
+        run: cmake -S . --preset=${{ matrix.preset }} -B build -DKVF_USE_FREETYPE=OFF
       - name: build debug
-        run: cmake --build build --config=Debug -- -v
+        run: cmake --build build --config=Debug ${{ matrix.build_args }}
       - name: build release
-        run: cmake --build build --config=Release -- -v
-      - name: test debug
-        run: cd build && ctest -V -C Debug
-      - name: test release
-        run: cd build && ctest -V -C Release
-  x64-linux-clang:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: init
-        run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
-      - name: configure
-        run: cmake -S . --preset=ninja-clang -B build -DGLFW_BUILD_X11=OFF
-      - name: build debug
-        run: cmake --build build --config=Debug -- -v
-      - name: build release
-        run: cmake --build build --config=Release -- -v
-      - name: test debug
-        run: cd build && ctest -V -C Debug
-      - name: test release
-        run: cd build && ctest -V -C Release
-  arm64-linux-gcc:
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v6
-      - name: init
-        run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
-      - name: configure
-        run: cmake -S . --preset=ninja-gcc -B build -DGLFW_BUILD_X11=OFF -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
-      - name: build debug
-        run: cmake --build build --config=Debug -- -v
-      - name: build release
-        run: cmake --build build --config=Release -- -v
-      - name: test debug
-        run: cd build && ctest -V -C Debug
-      - name: test release
-        run: cd build && ctest -V -C Release
-  arm64-linux-clang:
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v6
-      - name: init
-        run: uname -m; sudo apt update -yqq && sudo apt install -yqq mesa-common-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
-      - name: configure
-        run: cmake -S . --preset=ninja-clang -B build -DGLFW_BUILD_X11=OFF
-      - name: build debug
-        run: cmake --build build --config=Debug -- -v
-      - name: build release
-        run: cmake --build build --config=Release -- -v
-      - name: test debug
-        run: cd build && ctest -V -C Debug
-      - name: test release
-        run: cd build && ctest -V -C Release
-  x64-windows-vs22:
-    runs-on: windows-2025
-    steps:
-      - uses: actions/checkout@v6
-      - name: configure
-        run: cmake -S . --preset=vs22 -B build
-      - name: build debug
-        run: cmake --build build --config=Debug --parallel
-      - name: build release
-        run: cmake --build build --config=Release --parallel
-      - name: test debug
-        run: cd build && ctest -V -C Debug
-      - name: test release
-        run: cd build && ctest -V -C Release
-  x64-windows-clang:
-    runs-on: windows-2025
-    steps:
-      - uses: actions/checkout@v6
-      - name: configure
-        run: cmake -S . --preset=ninja-clang -B clang
-      - name: build debug
-        run: cmake --build clang --config=Debug -- -v
-      - name: build release
-        run: cmake --build clang --config=Release -- -v
-      - name: test debug
-        run: cd clang && ctest -V -C Debug
-      - name: test release
-        run: cd clang && ctest -V -C Release
-  x64-mingw-gcc:
-    runs-on: windows-2025
-    steps:
-      - uses: actions/checkout@v6
-      - name: configure
-        run: cmake -S . --preset=ninja-gcc -B build
-      - name: build debug
-        run: cmake --build build --config=Debug --parallel
-      - name: build release
-        run: cmake --build build --config=Release --parallel
+        run: cmake --build build --config=Release ${{ matrix.build_args }}
       - name: test debug
         run: cd build && ctest -V -C Debug
       - name: test release
